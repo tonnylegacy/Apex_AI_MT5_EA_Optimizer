@@ -15,12 +15,15 @@ import subprocess
 import time
 import psutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import yaml
 from loguru import logger
 
 from data.models import RunResult
+
+if TYPE_CHECKING:
+    from ea.registry import EAProfile
 
 
 # ── Custom Exceptions ─────────────────────────────────────────────────────────
@@ -68,15 +71,12 @@ class MT5Runner:
         ini_path: Path,
         report_dir: Path,
         log_csv_search_dir: Optional[Path] = None,
+        profile: Optional["EAProfile"] = None,
     ) -> RunResult:
         """
-        Full execution pipeline with retry:
-        1. Kill existing MT5
-        2. Validate environment
-        3. Launch fresh MT5
-        4. Wait for data readiness
-        5. Poll for report
-        6. Auto-retry once on failure
+        Full execution pipeline with retry.
+        profile: EAProfile used for validation + TradeLog lookup.
+                 Falls back to config['ea'] if not provided (legacy mode).
         """
         report_dir.mkdir(parents=True, exist_ok=True)
         report_stem = f"Optimizer_{run_id}"
@@ -94,7 +94,7 @@ class MT5Runner:
                 self._clear_stale_reports(run_id)
 
                 # ── Step 2: Pre-run validation ───────────────────────────
-                self._validate(run_id)
+                self._validate(run_id, profile=profile)
 
                 # ── Step 3: Launch fresh MT5 ─────────────────────────────
                 proc = self._launch_mt5(run_id, ini_path)
@@ -107,7 +107,9 @@ class MT5Runner:
                 result = self._wait_for_report(run_id, proc, report_dir, report_stem)
 
                 # ── Step 6: Find TradeLogger CSV ─────────────────────────
-                result.trade_log_csv = self._find_trade_log(run_id, log_csv_search_dir)
+                result.trade_log_csv = self._find_trade_log(
+                    run_id, log_csv_search_dir, profile=profile
+                )
 
                 logger.success(f"[{run_id}] Run complete. Report: {result.report_xml}")
                 return result
@@ -151,35 +153,32 @@ class MT5Runner:
 
     # ── Step 2: Pre-run validation ────────────────────────────────────────────
 
-    def _validate(self, run_id: str) -> None:
+    def _validate(self, run_id: str, profile: Optional["EAProfile"] = None) -> None:
         """Validate all required files and directories exist before launch."""
         errors = []
 
-        # Check terminal executable
         if not self.terminal_exe.exists():
             errors.append(f"MT5 terminal not found: {self.terminal_exe}")
 
-        # Check EA compiled file
-        ea_name = self.cfg["ea"]["file"]
+        # EA file: use profile if provided, else fall back to config['ea']
+        ea_name  = profile.ex5_file if profile else self.cfg.get("ea", {}).get("file", "")
+        symbol   = profile.symbol   if profile else self.cfg.get("ea", {}).get("symbol", "")
+
         ea_candidates = [
             self.appdata_path / "MQL5" / "Experts" / f"{ea_name}.ex5",
-            self.appdata_path / "MQL5" / "Experts" / f"{ea_name}",
+            self.appdata_path / "MQL5" / "Experts" / ea_name,
         ]
-        ea_found = any(p.exists() for p in ea_candidates)
-        if not ea_found:
+        if not any(p.exists() for p in ea_candidates):
             errors.append(
                 f"EA file not found: {ea_name}.ex5 — "
                 f"ensure you compiled the EA in MetaEditor before running."
             )
 
-        # Check appdata path
         if not self.appdata_path.exists():
             errors.append(f"MT5 appdata folder not found: {self.appdata_path}")
 
-        # Symbol check (basic — just ensure it's set)
-        symbol = self.cfg["ea"].get("symbol", "")
         if not symbol:
-            errors.append("Symbol not configured in config.yaml ea.symbol")
+            errors.append("Symbol not configured (check EAProfile or config.yaml)")
 
         if errors:
             for e in errors:
@@ -328,11 +327,17 @@ class MT5Runner:
     # ── TradeLogger CSV lookup ────────────────────────────────────────────────
 
     def _find_trade_log(
-        self, run_id: str, search_dir: Optional[Path]
+        self, run_id: str, search_dir: Optional[Path],
+        profile: Optional["EAProfile"] = None,
     ) -> Optional[Path]:
         """Find the TradeLogger CSV written by the EA during the backtest."""
-        ea_name = self.cfg["ea"]["file"]
-        symbol  = self.cfg["ea"]["symbol"]
+        # Use profile if available, else fall back to config['ea']
+        ea_cfg = self.cfg.get("ea", {})
+        ea_name = profile.ex5_file if profile else ea_cfg.get("file", "")
+        symbol  = profile.symbol   if profile else ea_cfg.get("symbol", "")
+
+        if not ea_name or not symbol:
+            return None
 
         candidates = [
             self.mql5_files_dir / f"{ea_name}_{symbol}_TradeLog.csv",

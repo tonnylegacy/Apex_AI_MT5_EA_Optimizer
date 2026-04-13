@@ -1,13 +1,7 @@
 # MT5 EA Strategy Optimizer — Master Configuration
-# LEGSTECH_EA_V2 | XAUUSD | H1
+# EA identity (name, symbol, timeframe, .set file) is now managed
+# in ea_registry.yaml via the EA Registry. See ea/registry.py.
 # ─────────────────────────────────────────────
-
-ea:
-  name: "LEGSTECH_EA_V2"
-  file: "LEGSTECH_EA_V2"          # .ex5 file name (no extension), in Experts/
-  symbol: "XAUUSD"
-  timeframe: "H1"                  # Period code used in INI (H1 = 16385... see MT5 period codes)
-  mt5_period_code: 16385           # PERIOD_H1 numeric code for [Tester] Period
 
 periods:
   train_start: "2022.01.01"
@@ -101,3 +95,4 @@ paths:
   runs_dir: "runs"
   reports_dir: "reports"
   log_file: "optimizer.log"
+  ea_registry: "ea_registry.yaml"   # EA profiles (symbol, .set path, mode)
