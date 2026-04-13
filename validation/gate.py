@@ -38,16 +38,38 @@ class ValidationGate:
 
     # ── Phase 1: IS Check ─────────────────────────────────────────────────────
 
-    def run_is_check(self, metrics: RunMetrics) -> GateResult:
+    def run_is_check(
+        self,
+        metrics: RunMetrics,
+        baseline_score: float = 0.0,
+    ) -> GateResult:
         """
-        Hard minimum thresholds. All must pass.
+        Two-tier IS check:
+        - MUST: enough trades for statistical confidence
+        - MUST: composite_score is better than baseline (or meets abs thresholds)
+        Absolute calmar/PF thresholds are logged as warnings but are NOT blockers
+        when the hypothesis shows clear improvement over baseline.
         """
+        min_trades_ok = metrics.total_trades >= self.thresh["min_trades"]
+        abs_pf_ok     = metrics.profit_factor >= self.thresh["min_profit_factor"]
+        abs_calmar_ok = metrics.calmar_ratio  >= self.thresh["min_calmar"]
+
+        # Score-based relative pass: hypothesis is better than baseline
+        score_improve_ok = metrics.composite_score > baseline_score * 1.0 + 0.01
+
+        # Gate passes if:
+        #  a) Enough trades AND (abs thresholds met OR clearly better than baseline)
+        passed = min_trades_ok and (
+            (abs_pf_ok and abs_calmar_ok)      # standard absolute pass
+            or score_improve_ok                # OR better than baseline
+        )
+
         checks = {
-            "min_trades":   metrics.total_trades  >= self.thresh["min_trades"],
-            "min_pf":       metrics.profit_factor >= self.thresh["min_profit_factor"],
-            "min_calmar":   metrics.calmar_ratio  >= self.thresh["min_calmar"],
+            "min_trades":    min_trades_ok,
+            "min_pf":        abs_pf_ok,
+            "min_calmar":    abs_calmar_ok,
+            "score_improve": score_improve_ok,
         }
-        passed = all(checks.values())
         reason = None
         if not passed:
             failed = [k for k, v in checks.items() if not v]

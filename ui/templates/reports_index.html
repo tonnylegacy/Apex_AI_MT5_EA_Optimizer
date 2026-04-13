@@ -38,7 +38,7 @@
       <h1>📁 Optimization Reports</h1>
       <div class="sub">{{ runs|length }} run(s) recorded · Click any card to open the full report</div>
     </div>
-    <a class="back-link" href="/" onclick="if(document.referrer){{history.back();return false;}}">← Back to Dashboard</a>
+    <a class="back-link" href="/" onclick="if(document.referrer){history.back();return false;}">&#8592; Back to Dashboard</a>
   </header>
 
   {% if not runs %}

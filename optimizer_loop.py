@@ -146,6 +146,7 @@ class OptimizerLoop:
         self.best_score    = baseline_metrics.composite_score
         current_params     = default_params.copy()
         current_metrics    = baseline_metrics
+        current_findings   = findings   # reuse in iter 1, avoid double-emit
         no_improve_count   = 0
 
         max_iter  = cfg["optimization"]["max_iterations"]
@@ -168,11 +169,14 @@ class OptimizerLoop:
             if trades_df.empty and not baseline_trades.empty:
                 trades_df = baseline_trades
 
-            # Analysis
-            self.phase = "analyze"
-            findings = self._run_analysis(
-                current_metrics.run_id, trades_df, current_metrics, analyzers, store
-            )
+            # Analysis — reuse cached findings when re-analyzing same run_id
+            if current_findings is not None and trades_df.empty:
+                findings = current_findings
+            else:
+                findings = self._run_analysis(
+                    current_metrics.run_id, trades_df, current_metrics, analyzers, store
+                )
+            current_findings = None  # only reuse once
 
             if not findings:
                 self._emit("log", {"level": "warn", "msg": "No actionable findings. Stopping."})
@@ -251,6 +255,17 @@ class OptimizerLoop:
                 store.update_hypothesis_status(hyp.hypothesis_id, "tested", run_id)
                 self.session_tested_deltas.append(hyp.param_delta)  # track for session dedup
 
+                # Emit score update for every run so chart populates
+                self._emit("score_update", {
+                    "iteration": self.iteration,
+                    "run_id":    run_id,
+                    "score":     round(test_metrics.composite_score, 4),
+                    "calmar":    round(test_metrics.calmar_ratio, 4),
+                    "pf":        round(test_metrics.profit_factor, 4),
+                    "ts":        datetime.utcnow().isoformat(),
+                    "promoted":  False,
+                })
+
                 if iteration_best is None or test_metrics.composite_score > iteration_best.composite_score:
                     iteration_best        = test_metrics
                     iteration_best_params = test_params
@@ -262,7 +277,7 @@ class OptimizerLoop:
 
             # Validation gate
             self.phase = "validate"
-            gate_result = gate.run_is_check(iteration_best)
+            gate_result = gate.run_is_check(iteration_best, baseline_score=current_metrics.composite_score)
             if not gate_result.passed:
                 self._emit("log", {"level": "error", "msg": f"IS gate failed: {gate_result.reason}"})
                 store.update_hypothesis_status(iteration_best_hyp.hypothesis_id, "rejected")

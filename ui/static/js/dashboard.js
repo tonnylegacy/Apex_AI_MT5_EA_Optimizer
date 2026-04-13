@@ -258,9 +258,15 @@ function addCandidate(d) {
 
 function pushChartPoint(d) {
   const labels = scoreChart.data.labels;
-  labels.push(`Iter ${d.iteration}`);
+  // Label: 'Baseline' for first point, 'Iter N · run_id' for hypothesis runs
+  const lbl = d.run_id
+    ? (d.run_id.startsWith('baseline') ? 'Baseline' : `It${d.iteration}·${d.run_id.split('_').pop()}`)
+    : `Iter ${d.iteration}`;
+  labels.push(lbl);
   scoreChart.data.datasets[0].data.push(d.score);
-  scoreChart.data.datasets[1].data.push(d.calmar > 1 ? 1 : d.calmar / 4); // normalize calmar to 0-1
+  // Normalize calmar: clamp -0.5..2.0 → 0..1 for display
+  const calmarNorm = Math.max(0, Math.min(1, (d.calmar + 0.5) / 2.5));
+  scoreChart.data.datasets[1].data.push(calmarNorm);
   if (labels.length > 50) {
     labels.shift();
     scoreChart.data.datasets.forEach(ds => ds.data.shift());
@@ -309,10 +315,14 @@ socket.on('run_started', d => {
 
 socket.on('run_complete', d => {
   updateMetrics(d);
-  const sign = d.score > 0 ? '✓' : '•';
+  const sign = d.score > 0 ? '\u2713' : '\u2022';
   addLog(d.score > 0.3 ? 'success' : 'info',
     `${sign} ${d.run_id}: Score=${d.score} | Calmar=${d.calmar} | PF=${d.profit_factor} | DD=${d.drawdown_pct}%`
   );
+  // Push baseline run to chart immediately (hypothesis runs pushed via score_update)
+  if (d.run_id && d.run_id.startsWith('baseline')) {
+    pushChartPoint({ iteration: 0, run_id: d.run_id, score: d.score, calmar: d.calmar });
+  }
 });
 
 socket.on('run_failed', d => {
@@ -333,7 +343,10 @@ socket.on('hypothesis_testing', d => {
 
 socket.on('score_update', d => {
   pushChartPoint(d);
-  document.getElementById('hdr-score').textContent = d.score.toFixed(4);
+  // Update best score header only when a candidate is actually promoted
+  if (d.promoted) {
+    document.getElementById('hdr-score').textContent = d.score.toFixed(4);
+  }
 });
 
 socket.on('candidate_promoted', d => {
