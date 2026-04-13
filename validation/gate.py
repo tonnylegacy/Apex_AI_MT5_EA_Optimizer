@@ -60,16 +60,9 @@ class ValidationGate:
 
     def run_walk_forward(
         self,
-        params:     dict[str, Any],
-        cfg:        dict,
-        store,       # DataStore
-        builder,     # IniBuilder
-        runner,      # MT5Runner
-        parser,      # ReportParser
-        log_rdr,     # TradeLogReader
-        analyzers,   # list[BaseAnalyzer]
-        scorer,      # CompositeScorer
-        n_folds:    int = 2,
+        params:   dict[str, Any],
+        executor,                 # callable(params, start_str, end_str, fold_id) -> Optional[RunMetrics]
+        n_folds:  int = 2,
     ) -> WFVResult:
         """
         Split training period into n_folds sub-periods.
@@ -94,21 +87,13 @@ class ValidationGate:
             if i == n_folds - 1:
                 fold_end = train_end   # last fold gets remainder
 
-            fold_id = f"wfv_fold{i+1}_{uuid.uuid4().hex[:6]}"
             logger.info(f"WFV fold {i+1}/{n_folds}: {fold_start.date()} → {fold_end.date()}")
 
-            # Import here to avoid circular
-            from main import execute_run
-            fm, _ = execute_run(
-                run_id=fold_id,
-                params=params,
-                period_start=fold_start.strftime("%Y.%m.%d"),
-                period_end=fold_end.strftime("%Y.%m.%d"),
-                phase="wfv",
-                hypothesis_id=None,
-                cfg=cfg, store=store, builder=builder, runner=runner,
-                parser=parser, log_rdr=log_rdr, analyzers=analyzers, scorer=scorer,
-            )
+            fold_id = f"wfv_fold{i+1}_{uuid.uuid4().hex[:6]}"
+            start_s = fold_start.strftime("%Y.%m.%d")
+            end_s   = fold_end.strftime("%Y.%m.%d")
+
+            fm = executor(params, start_s, end_s, fold_id)
             if fm:
                 fold_metrics.append(fm)
 

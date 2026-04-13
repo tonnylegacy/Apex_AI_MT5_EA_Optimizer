@@ -268,11 +268,24 @@ class OptimizerLoop:
                 no_improve_count += 1
                 continue
 
-            # Walk-forward
+            # Walk-forward — pass an executor so gate never imports 'main'
             self._emit("log", {"level": "info", "msg": "Running walk-forward validation..."})
+            _store, _builder, _runner, _parser, _log_rdr, _analyzers, _scorer = (
+                store, builder, runner, parser, log_rdr, analyzers, scorer
+            )
+            def _wfv_executor(params, start, end, fold_id):
+                m, _ = self._execute_run(
+                    run_id=fold_id, params=params,
+                    period_start=start, period_end=end,
+                    phase="wfv", hypothesis_id=None,
+                    store=_store, builder=_builder, runner=_runner,
+                    parser=_parser, log_rdr=_log_rdr,
+                    analyzers=_analyzers, scorer=_scorer,
+                )
+                return m
             wfv = gate.run_walk_forward(
-                iteration_best_params, cfg, store, builder, runner,
-                parser, log_rdr, analyzers, scorer,
+                params=iteration_best_params,
+                executor=_wfv_executor,
             )
             self._emit("log", {
                 "level": "success" if wfv.passed else "warn",
@@ -406,7 +419,10 @@ class OptimizerLoop:
                 reversals = trades_df[trades_df["result_class"] == "reversal"]
                 metrics.reversal_rate = len(reversals) / max(1, len(losers))
             if "mfe_capture_ratio" in trades_df.columns:
-                metrics.avg_mfe_capture = float(trades_df["mfe_capture_ratio"].dropna().mean() or 0)
+                # dropna() first — if no MFE data, series is all-NaN, mean()=NaN
+                # Use None (not NaN) so scorer uses its safe default of 0.5
+                cap_series = trades_df["mfe_capture_ratio"].dropna()
+                metrics.avg_mfe_capture = float(cap_series.mean()) if not cap_series.empty else None
 
         metrics.composite_score = scorer.score(metrics)
         store.save_metrics(metrics)
