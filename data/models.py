@@ -100,7 +100,7 @@ class Run(BaseModel):
     period_start:  str
     period_end:    str
     params:        dict[str, Any]           # snapshot of all EA inputs used
-    phase:         Literal["baseline", "explore", "validate", "wfv", "oos"]
+    phase:         str
     hypothesis_id: Optional[str] = None
     tester_model:  int = 0                  # 0=Every Tick
     ini_snapshot:  Optional[str] = None     # full .ini content for reproducibility
