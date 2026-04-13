@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MT5 Smart Optimizer — Live Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* ── Progress bar ─────────────────────────────────────── */
+    .progress-wrap {
+      background: var(--card-bg, #0d1117);
+      border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .progress-phase { font-size: 0.85rem; font-weight: 600; color: #00d4aa; text-transform: uppercase; letter-spacing: 0.08em; }
+    .progress-count { font-size: 0.82rem; color: #64748b; font-family: 'JetBrains Mono', monospace; }
+    .progress-bar-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
+    .progress-bar-fill  { height: 100%; background: linear-gradient(90deg, #00d4aa, #7c6dfa); border-radius: 999px; transition: width 0.5s ease; width: 0%; }
+    .progress-budget { margin-top: 0.5rem; font-size: 0.75rem; color: #64748b; }
+
+    /* ── Phase steps ──────────────────────────────────────── */
+    .phase-steps { display: flex; align-items: center; gap: 0; }
+    .phase-step  { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; flex: 1; position: relative; }
+    .phase-dot   { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.12); background: #0d1117; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; color: #64748b; transition: all 0.4s; z-index: 1; }
+    .phase-name  { font-size: 0.7rem; color: #64748b; font-weight: 500; text-align: center; }
+    .phase-line  { flex: 1; height: 2px; background: rgba(255,255,255,0.08); margin-top: -16px; }
+    .phase-step.active  .phase-dot { border-color: #00d4aa; color: #00d4aa; background: rgba(0,212,170,0.1); box-shadow: 0 0 12px rgba(0,212,170,0.3); }
+    .phase-step.active  .phase-name { color: #00d4aa; }
+    .phase-step.done    .phase-dot { border-color: #00d4aa; background: #00d4aa; color: #051a14; }
+    .phase-step.done    .phase-name { color: #e2e8f0; }
+
+    /* ── Phase 1 results table ────────────────────────────── */
+    .results-table-wrap { overflow-x: auto; }
+    .results-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .results-table th { color: #64748b; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.07); text-align: right; }
+    .results-table th:first-child { text-align: left; }
+    .results-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.04); text-align: right; }
+    .results-table td:first-child { text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+    .results-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .results-table .rank-1 td { color: #00d4aa; }
+    .results-table .rank-1 td:first-child { font-weight: 600; }
+    .profit-pos { color: #00d4aa; }
+    .profit-neg { color: #ef4444; }
+    .badge-pass { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; background: rgba(0,212,170,0.15); color: #00d4aa; font-size: 0.7rem; font-weight: 600; }
+    .badge-fail { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; background: rgba(239,68,68,0.12); color: #ef4444; font-size: 0.7rem; }
+
+    /* ── Verdict banner ───────────────────────────────────── */
+    .verdict-banner {
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 1rem;
+      display: none;
+      animation: fadeUp 0.5s ease both;
+    }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .verdict-banner.RECOMMENDED { background: linear-gradient(135deg, rgba(0,212,170,0.12), rgba(0,212,170,0.04)); border: 1px solid rgba(0,212,170,0.3); }
+    .verdict-banner.RISKY       { background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04)); border: 1px solid rgba(245,158,11,0.3); }
+    .verdict-banner.NOT_RELIABLE{ background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.04)); border: 1px solid rgba(239,68,68,0.3); }
+    .verdict-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+    .verdict-icon { font-size: 2.5rem; }
+    .verdict-title { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; }
+    .verdict-sub   { font-size: 0.85rem; color: #94a3b8; margin-top: 0.2rem; }
+    .verdict-RECOMMENDED .verdict-title { color: #00d4aa; }
+    .verdict-RISKY        .verdict-title { color: #f59e0b; }
+    .verdict-NOT_RELIABLE .verdict-title { color: #ef4444; }
+    .verdict-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .verdict-metric { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 0.75rem; text-align: center; }
+    .verdict-metric-val { font-size: 1.3rem; font-weight: 700; }
+    .verdict-metric-lbl { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.07em; margin-top: 0.2rem; }
+    .verdict-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .btn-download {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.8rem 1.75rem; border-radius: 10px;
+      background: linear-gradient(135deg, #00d4aa, #00b890);
+      color: #051a14; font-weight: 700; font-family: inherit;
+      font-size: 0.95rem; cursor: pointer; border: none;
+      text-decoration: none;
+      box-shadow: 0 4px 20px rgba(0,212,170,0.3);
+      transition: all 0.2s;
+    }
+    .btn-download:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,212,170,0.4); }
+    .btn-new-run {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.8rem 1.5rem; border-radius: 10px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+      color: #e2e8f0; font-weight: 600; font-family: inherit;
+      font-size: 0.9rem; cursor: pointer; text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-new-run:hover { background: rgba(255,255,255,0.1); }
+
+    /* ── No-profit warning ────────────────────────────────── */
+    .no-profit-banner {
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 14px;
+      padding: 1.5rem;
+      display: none;
+      margin-bottom: 1rem;
+    }
+    .no-profit-banner h3 { color: #ef4444; margin-bottom: 0.5rem; }
+    .no-profit-banner p  { color: #94a3b8; font-size: 0.875rem; line-height: 1.6; }
+
+    /* ── Updated candidate card ───────────────────────────── */
+    .cand-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 1rem; margin-bottom: 0.75rem; }
+    .cand-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .cand-rank   { font-size: 0.75rem; font-weight: 700; color: #00d4aa; }
+    .cand-run-id { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #64748b; }
+    .cand-score-row { display: flex; gap: 1.5rem; font-size: 0.82rem; flex-wrap: wrap; }
+    .cand-metric { display: flex; flex-direction: column; gap: 0.1rem; }
+    .cand-metric-lbl { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+    .cand-metric-val { font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <div>
+          <div class="logo-title">MT5 Smart Optimizer</div>
+          <div class="logo-sub" id="session-label">Live Dashboard</div>
+        </div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="stat-pill" id="pill-state">
+        <span class="dot dot-idle" id="state-dot"></span>
+        <span id="state-label">Ready</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Runs</span>
+        <span class="pill-val" id="hdr-iter">0</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Best Score</span>
+        <span class="pill-val score-val" id="hdr-score">—</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Elapsed</span>
+        <span class="pill-val" id="hdr-elapsed">0:00</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <a href="/" class="btn btn-secondary">🏠 Home</a>
+      <a href="/reports" class="btn btn-secondary">📁 Reports</a>
+      <button class="btn btn-stop hidden" id="btn-stop" onclick="stopOptimizer()">⏹ Stop</button>
+      <a href="/setup" class="btn btn-start" id="btn-start">⚡ New Run</a>
+    </div>
+  </header>
+
+  <!-- ── MAIN GRID ── -->
+  <main class="main-grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="col-left">
+
+      <!-- Verdict banner (hidden until complete) -->
+      <div class="verdict-banner" id="verdict-banner"></div>
+
+      <!-- No-profit warning (hidden until needed) -->
+      <div class="no-profit-banner" id="no-profit-banner">
+        <h3>⚠️ No Profitable Configuration Found</h3>
+        <p id="no-profit-msg">Phase 1 found no profitable configuration. Try a different timeframe, date range, or check EA settings.</p>
+        <div style="margin-top:1rem">
+          <a href="/setup" class="btn-new-run">⚡ Try Again with Different Settings</a>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-header">
+          <span class="progress-phase" id="progress-phase">Phase 1: Broad Discovery</span>
+          <span class="progress-count" id="progress-count">0 / 0</span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progress-bar-fill"></div>
+        </div>
+        <div class="progress-budget" id="progress-budget"></div>
+      </div>
+
+      <!-- Score Chart -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📈 Score History</span>
+          <span class="card-badge" id="chart-badge">Waiting...</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="scoreChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Current Run Metrics -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🎯 Latest Run Metrics</span>
+          <span class="run-id-badge" id="current-run-id">—</span>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-card"><div class="metric-label">Net Profit</div><div class="metric-val" id="m-profit">—</div></div>
+          <div class="metric-card"><div class="metric-label">Calmar Ratio</div><div class="metric-val" id="m-calmar">—</div></div>
+          <div class="metric-card"><div class="metric-label">Profit Factor</div><div class="metric-val" id="m-pf">—</div></div>
+          <div class="metric-card"><div class="metric-label">Max Drawdown</div><div class="metric-val" id="m-dd">—</div></div>
+          <div class="metric-card"><div class="metric-label">Win Rate</div><div class="metric-val" id="m-wr">—</div></div>
+          <div class="metric-card"><div class="metric-label">Total Trades</div><div class="metric-val" id="m-trades">—</div></div>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar-label">
+            <span>Session Score</span>
+            <span class="score-big" id="m-score">—</span>
+          </div>
+          <div class="score-bar-track">
+            <div class="score-bar-fill" id="score-bar-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col-right">
+
+      <!-- Phase steps -->
+      <div class="card phase-card">
+        <div class="phase-steps">
+          <div class="phase-step" id="phase-setup">
+            <div class="phase-dot">1</div>
+            <div class="phase-name">Setup</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-phase1">
+            <div class="phase-dot">2</div>
+            <div class="phase-name">Broad Search</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-phase2">
+            <div class="phase-dot">3</div>
+            <div class="phase-name">Refine</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-phase3">
+            <div class="phase-dot">4</div>
+            <div class="phase-name">Validate</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-done">
+            <div class="phase-dot">✓</div>
+            <div class="phase-name">Done</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 1 results table -->
+      <div class="card" id="phase1-results-card" style="display:none">
+        <div class="card-header">
+          <span class="card-title">🏆 Phase 1 — Top Configurations</span>
+          <span class="card-badge" id="phase1-badge">—</span>
+        </div>
+        <div class="results-table-wrap">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Profit</th>
+                <th>Calmar</th>
+                <th>PF</th>
+                <th>Win%</th>
+                <th>DD%</th>
+                <th>Trades</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="phase1-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live log -->
+      <div class="card log-card">
+        <div class="card-header">
+          <span class="card-title">📋 Live Log</span>
+          <button class="clear-btn" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-feed" id="log-feed">
+          <div class="log-line log-info">System ready. <a href="/setup" style="color:inherit;opacity:0.7">Start a new optimization →</a></div>
+        </div>
+      </div>
+
+      <!-- Best candidates so far -->
+      <div class="card candidates-card">
+        <div class="card-header">
+          <span class="card-title">⭐ Best Configs Found</span>
+          <span class="card-badge" id="cand-count">0 configs</span>
+        </div>
+        <div class="candidates-list" id="candidates-list">
+          <div class="cand-empty">Profitable configurations will appear here as the optimizer runs...</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── SCRIPTS ── -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

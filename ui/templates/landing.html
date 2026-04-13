@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MT5 Smart Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #07090f;
+    --bg2:     #0d1117;
+    --bg3:     #141b27;
+    --border:  rgba(255,255,255,0.07);
+    --accent:  #00d4aa;
+    --accent2: #7c6dfa;
+    --warn:    #f59e0b;
+    --text:    #e2e8f0;
+    --muted:   #64748b;
+    --glow:    0 0 40px rgba(0,212,170,0.15);
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Animated background grid */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,170,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,170,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridScroll 20s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+  @keyframes gridScroll { to { background-position: 60px 60px; } }
+
+  /* Glowing orbs */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.12;
+    pointer-events: none;
+    z-index: 0;
+    animation: orb-float 8s ease-in-out infinite;
+  }
+  .orb-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; animation-delay: 0s; }
+  .orb-2 { width: 500px; height: 500px; background: var(--accent2); bottom: -200px; right: -100px; animation-delay: 4s; }
+  @keyframes orb-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-30px)} }
+
+  .landing {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    max-width: 700px;
+    padding: 2rem;
+    animation: fadeUp 0.8s ease both;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 2.5rem;
+  }
+  .logo-icon {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 14px;
+    display: grid; place-items: center;
+    font-size: 1.6rem;
+    box-shadow: var(--glow);
+  }
+  .logo-name {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: white;
+  }
+  .logo-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  h1 {
+    font-size: clamp(2.2rem, 5vw, 3.5rem);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+    margin-bottom: 1.25rem;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 60%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 1.1rem;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 3rem;
+    font-weight: 400;
+  }
+
+  .actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.9rem 2rem;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #00b890);
+    color: #051a14;
+    box-shadow: 0 4px 24px rgba(0,212,170,0.35);
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 36px rgba(0,212,170,0.5);
+  }
+
+  .btn-secondary {
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover {
+    background: #1e2a3f;
+    border-color: rgba(255,255,255,0.15);
+    transform: translateY(-2px);
+  }
+
+  .stats {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    margin-top: 3.5rem;
+    padding-top: 2.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .stat { text-align: center; }
+  .stat-val {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.03em;
+  }
+  .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.08em; }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.8rem;
+    background: rgba(0,212,170,0.1);
+    border: 1px solid rgba(0,212,170,0.2);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    color: var(--accent);
+    margin-bottom: 2rem;
+  }
+  .pulse {
+    width: 7px; height: 7px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="landing">
+
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-name">MT5 Smart Optimizer</div>
+      <div class="logo-sub">Autonomous EA Optimization Engine</div>
+    </div>
+  </div>
+
+  <div class="status-pill" id="status-pill">
+    <div class="pulse"></div>
+    <span id="status-text">Ready</span>
+  </div>
+
+  <h1>Find the Best Settings<br>for Any MT5 EA</h1>
+
+  <p class="subtitle">
+    The Smart Optimizer tests dozens of configurations across your full parameter space,
+    validates the winner on unseen data, and delivers a ready-to-use .set file — in under an hour.
+  </p>
+
+  <div class="actions">
+    <a href="/setup" class="btn btn-primary">
+      ⚡ New Optimization
+    </a>
+    <a href="/dashboard" class="btn btn-secondary" id="dashboard-btn">
+      📊 Live Dashboard
+    </a>
+    <a href="/reports" class="btn btn-secondary">
+      📁 View Reports
+    </a>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val">3</div>
+      <div class="stat-label">Phases</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="stat-runs">20–50</div>
+      <div class="stat-label">Config Tests</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">&lt;1hr</div>
+      <div class="stat-label">Typical Time</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">OOS</div>
+      <div class="stat-label">Validated</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Check if optimizer is running
+  fetch('/api/status').then(r => r.json()).then(s => {
+    if (s.state === 'running') {
+      document.getElementById('status-text').textContent = `Running — ${s.phase} (${s.run_count}/${s.total_runs})`;
+      document.getElementById('dashboard-btn').style.background = 'linear-gradient(135deg,#7c6dfa,#5b4fe8)';
+      document.getElementById('dashboard-btn').style.color = 'white';
+    }
+  }).catch(() => {});
+</script>
+</body>
+</html>

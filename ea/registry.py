@@ -166,6 +166,11 @@ class EARegistry:
         profile.optimize_params = optimize_params
         self._save()
 
+    def list_all(self) -> list:
+        """Return all registered EAProfile objects (for UI dropdowns)."""
+        return list(self._profiles.values())
+
+
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _load(self) -> None:

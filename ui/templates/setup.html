@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Optimization — MT5 Smart Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:     #07090f;
+    --bg2:    #0d1117;
+    --bg3:    #141b27;
+    --bg4:    #1a2335;
+    --border: rgba(255,255,255,0.08);
+    --accent: #00d4aa;
+    --accent2:#7c6dfa;
+    --warn:   #f59e0b;
+    --danger: #ef4444;
+    --text:   #e2e8f0;
+    --muted:  #64748b;
+    --glow:   0 0 30px rgba(0,212,170,0.12);
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+  body::before {
+    content:''; position:fixed; inset:0;
+    background-image: linear-gradient(rgba(0,212,170,0.025) 1px,transparent 1px),
+                      linear-gradient(90deg,rgba(0,212,170,0.025) 1px,transparent 1px);
+    background-size: 60px 60px;
+    pointer-events:none; z-index:0;
+  }
+
+  .page { position:relative; z-index:1; max-width: 780px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    color: var(--muted); text-decoration: none;
+    font-size: 0.875rem; transition: color 0.2s;
+  }
+  .back-btn:hover { color: var(--text); }
+  .header-title { font-size: 1.5rem; font-weight: 800; letter-spacing:-0.03em; }
+  .header-sub { font-size: 0.85rem; color: var(--muted); margin-top: 0.1rem; }
+
+  /* Section cards */
+  .section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+    transition: border-color 0.2s;
+  }
+  .section:hover { border-color: rgba(255,255,255,0.13); }
+  .section-title {
+    font-size: 0.8rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--accent); margin-bottom: 1.25rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+
+  /* Form grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+
+  .field { display: flex; flex-direction: column; gap: 0.45rem; }
+  .field label { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+
+  input, select {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.95rem;
+    padding: 0.65rem 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+    -webkit-appearance: none;
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,170,0.12);
+  }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position: right 0.9rem center; padding-right: 2.2rem; cursor:pointer; }
+
+  /* Budget pills */
+  .pill-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .pill {
+    padding: 0.55rem 1.2rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    font-size: 0.875rem;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--muted);
+    transition: all 0.2s;
+    font-weight: 500;
+    position: relative;
+  }
+  .pill:hover { border-color: var(--accent); color: var(--text); }
+  .pill.active {
+    background: rgba(0,212,170,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .pill .badge {
+    position: absolute; top: -7px; right: -4px;
+    background: var(--accent2); color: white;
+    font-size: 0.6rem; padding: 0 5px; border-radius: 999px; font-weight:600;
+  }
+
+  /* Objective cards */
+  .obj-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+  .obj-card {
+    background: var(--bg3);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .obj-card:hover { border-color: rgba(255,255,255,0.2); }
+  .obj-card.active { border-color: var(--accent); background: rgba(0,212,170,0.08); }
+  .obj-icon { font-size: 1.6rem; margin-bottom: 0.4rem; }
+  .obj-name { font-size: 0.85rem; font-weight: 600; }
+  .obj-desc { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+
+  /* Advanced toggle */
+  .adv-toggle {
+    display: flex; align-items: center; gap: 0.6rem;
+    cursor: pointer;
+    color: var(--muted); font-size: 0.85rem;
+    padding: 0.6rem 0;
+    user-select: none;
+    width: fit-content;
+  }
+  .adv-toggle:hover { color: var(--text); }
+  .adv-toggle svg { transition: transform 0.2s; }
+  .adv-toggle.open svg { transform: rotate(90deg); }
+  .adv-body { display: none; margin-top: 1rem; }
+  .adv-body.open { display: block; }
+
+  /* Param checkboxes */
+  .param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+  .param-check { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 8px; transition: background 0.15s; }
+  .param-check:hover { background: var(--bg4); }
+  .param-check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .param-check span { font-size: 0.82rem; }
+
+  /* Submit */
+  .submit-row {
+    display: flex; gap: 1rem; align-items: center;
+    margin-top: 2rem; padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .btn-start {
+    padding: 0.95rem 2.5rem;
+    background: linear-gradient(135deg, var(--accent), #00b890);
+    color: #051a14;
+    border: none; border-radius: 12px;
+    font-size: 1rem; font-weight: 700;
+    cursor: pointer; font-family: inherit;
+    transition: all 0.2s;
+    box-shadow: 0 4px 24px rgba(0,212,170,0.3);
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .btn-start:hover { transform: translateY(-2px); box-shadow: 0 8px 36px rgba(0,212,170,0.45); }
+  .btn-start:active { transform: translateY(0); }
+  .btn-start:disabled { opacity: 0.5; pointer-events: none; }
+
+  .estimate { color: var(--muted); font-size: 0.85rem; }
+  .estimate strong { color: var(--accent); }
+
+  /* Hint row */
+  .hint {
+    background: rgba(0,212,170,0.06);
+    border: 1px solid rgba(0,212,170,0.15);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 600px) {
+    .grid-2, .grid-3, .obj-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <a href="/" class="back-btn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.83 7H14a.5.5 0 010 1H3.83l3.58 3.59a.5.5 0 01-.7.71l-4.5-4.5a.5.5 0 010-.71l4.5-4.5a.5.5 0 11.7.71L3.83 7z"/></svg>
+      Back
+    </a>
+    <div>
+      <div class="header-title">⚡ New Optimization</div>
+      <div class="header-sub">Configure and launch a smart EA optimization session</div>
+    </div>
+  </div>
+
+  <form id="setup-form" novalidate>
+
+    <!-- EA Identity -->
+    <div class="section">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/></svg>
+        EA Configuration
+      </div>
+      <div class="grid-3">
+        <div class="field">
+          <label for="ea_name">Expert Advisor</label>
+          <select id="ea_name" name="ea_name">
+            {% for ea in registered_eas %}
+            <option value="{{ ea.name }}" {% if ea.name == default_ea %}selected{% endif %}>{{ ea.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="symbol">Symbol</label>
+          <select id="symbol" name="symbol">
+            <option value="XAUUSD" selected>XAUUSD (Gold)</option>
+            <option value="EURUSD">EURUSD</option>
+            <option value="GBPUSD">GBPUSD</option>
+            <option value="USDJPY">USDJPY</option>
+            <option value="USDCHF">USDCHF</option>
+            <option value="USDCAD">USDCAD</option>
+            <option value="AUDUSD">AUDUSD</option>
+            <option value="BTCUSD">BTCUSD</option>
+            <option value="NASDAQ">NASDAQ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="timeframe">Timeframe</label>
+          <select id="timeframe" name="timeframe">
+            <option value="M15">M15</option>
+            <option value="M30">M30</option>
+            <option value="H1" selected>H1</option>
+            <option value="H4">H4</option>
+            <option value="D1">D1</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Periods -->
+    <div class="section">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Date Ranges
+      </div>
+      <div class="grid-2" style="margin-bottom:1rem">
+        <div class="field">
+          <label for="train_start">Training From</label>
+          <input type="date" id="train_start" name="train_start" value="2022-01-01">
+        </div>
+        <div class="field">
+          <label for="train_end">Training To</label>
+          <input type="date" id="train_end" name="train_end" value="2023-12-31">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="val_start">Validation From (Out-of-Sample)</label>
+          <input type="date" id="val_start" name="val_start" value="2024-01-01">
+        </div>
+        <div class="field">
+          <label for="val_end">Validation To</label>
+          <input type="date" id="val_end" name="val_end" value="2024-06-30">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:1rem">
+        <strong>Tip:</strong> Training period is where the optimizer searches for settings.
+        Validation is unseen data — the optimizer never touches it until Phase 3.
+        Keep validation at least 6 months.
+      </div>
+    </div>
+
+    <!-- Budget -->
+    <div class="section">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Time Budget
+      </div>
+      <div class="pill-group">
+        <button type="button" class="pill" data-budget="30" onclick="setBudget(30)">
+          ⚡ 30 min
+          <span class="badge">~15 tests</span>
+        </button>
+        <button type="button" class="pill active" data-budget="60" onclick="setBudget(60)">
+          ⏱ 1 hour
+          <span class="badge">~35 tests</span>
+        </button>
+        <button type="button" class="pill" data-budget="120" onclick="setBudget(120)">
+          🌙 2 hours
+          <span class="badge">~70 tests</span>
+        </button>
+      </div>
+      <input type="hidden" id="budget_minutes" name="budget_minutes" value="60">
+    </div>
+
+    <!-- Objective -->
+    <div class="section">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Optimize For
+      </div>
+      <div class="obj-grid">
+        <div class="obj-card active" data-obj="balanced" onclick="setObj('balanced')">
+          <div class="obj-icon">⚖️</div>
+          <div class="obj-name">Balanced</div>
+          <div class="obj-desc">Good profit + Low drawdown</div>
+        </div>
+        <div class="obj-card" data-obj="max_profit" onclick="setObj('max_profit')">
+          <div class="obj-icon">📈</div>
+          <div class="obj-name">Max Profit</div>
+          <div class="obj-desc">Highest return, any risk</div>
+        </div>
+        <div class="obj-card" data-obj="min_drawdown" onclick="setObj('min_drawdown')">
+          <div class="obj-icon">🛡️</div>
+          <div class="obj-name">Low Risk</div>
+          <div class="obj-desc">Minimum drawdown first</div>
+        </div>
+      </div>
+      <input type="hidden" id="objective" name="objective" value="balanced">
+    </div>
+
+    <!-- Advanced: Param Selection -->
+    <div class="section">
+      <div class="adv-toggle" id="adv-toggle" onclick="toggleAdv()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+        Advanced: Select Parameters to Optimize
+        <span style="color:var(--muted);font-size:0.78rem;margin-left:0.25rem">(optional)</span>
+      </div>
+      <div class="adv-body" id="adv-body">
+        <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem">
+          Leave all checked to let the optimizer decide. Uncheck parameters you want to keep fixed.
+        </p>
+        <div class="param-grid" id="param-grid">
+          {% for p in params %}
+          <label class="param-check">
+            <input type="checkbox" name="selected_params" value="{{ p.name }}"
+              {% if p.optimize %}checked{% endif %}
+              {% if p.type == 'fixed' %}disabled{% endif %}>
+            <span title="{{ p.range_label }}">{{ p.name.replace('Inp','') }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="submit-row">
+      <button type="submit" class="btn-start" id="start-btn">
+        <span>⚡</span> Start Optimization
+      </button>
+      <div class="estimate" id="estimate">
+        Estimated: <strong id="est-runs">~35 tests</strong> in <strong id="est-time">~1 hour</strong>
+      </div>
+    </div>
+
+  </form>
+</div>
+
+<script>
+  let budget = 60;
+  let objective = 'balanced';
+
+  const estimates = {
+    30:  {runs: '~15 tests', time: '~30 min'},
+    60:  {runs: '~35 tests', time: '~1 hour'},
+    120: {runs: '~70 tests', time: '~2 hours'},
+  };
+
+  function setBudget(val) {
+    budget = val;
+    document.getElementById('budget_minutes').value = val;
+    document.querySelectorAll('.pill').forEach(p => {
+      p.classList.toggle('active', parseInt(p.dataset.budget) === val);
+    });
+    const e = estimates[val] || estimates[60];
+    document.getElementById('est-runs').textContent = e.runs;
+    document.getElementById('est-time').textContent = e.time;
+  }
+
+  function setObj(val) {
+    objective = val;
+    document.getElementById('objective').value = val;
+    document.querySelectorAll('.obj-card').forEach(c => {
+      c.classList.toggle('active', c.dataset.obj === val);
+    });
+  }
+
+  function toggleAdv() {
+    const toggle = document.getElementById('adv-toggle');
+    const body   = document.getElementById('adv-body');
+    toggle.classList.toggle('open');
+    body.classList.toggle('open');
+  }
+
+  document.getElementById('setup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('start-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Starting...';
+
+    const form = e.target;
+    const data = {
+      ea_name:        form.ea_name.value,
+      symbol:         form.symbol.value,
+      timeframe:      form.timeframe.value,
+      train_start:    form.train_start.value.replace(/-/g, '.'),
+      train_end:      form.train_end.value.replace(/-/g, '.'),
+      val_start:      form.val_start.value.replace(/-/g, '.'),
+      val_end:        form.val_end.value.replace(/-/g, '.'),
+      objective:      form.objective.value,
+      budget_minutes: parseInt(form.budget_minutes.value),
+      selected_params: [...form.querySelectorAll('input[name=selected_params]:checked')]
+                         .map(cb => cb.value),
+    };
+
+    try {
+      const resp = await fetch('/api/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        window.location.href = '/dashboard';
+      } else {
+        alert('Could not start: ' + (result.msg || 'Unknown error'));
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡</span> Start Optimization';
+      }
+    } catch(err) {
+      alert('Network error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = '<span>⚡</span> Start Optimization';
+    }
+  });
+</script>
+</body>
+</html>

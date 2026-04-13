@@ -71,7 +71,15 @@ body {
 .dot-idle    { background: var(--text-muted); }
 .dot-running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
 .dot-paused  { background: var(--yellow); }
+.dot-warn    { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+.dot-done    { background: var(--green); }
 .dot-error   { background: var(--red); }
+
+/* Alias for dashboard pipeline inline styles */
+:root { --card-bg: var(--bg-card); --border-color: var(--border); }
+.profit-pos { color: var(--green); }
+.profit-neg { color: var(--red); }
+.log-warning { color: var(--yellow); }
 
 @keyframes pulse {
   0%,100% { opacity: 1; } 50% { opacity: 0.4; }
