@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MT5 EA Optimizer — Live Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <div>
+          <div class="logo-title">MT5 EA Optimizer</div>
+          <div class="logo-sub">LEGSTECH_EA_V2 · XAUUSD · H1</div>
+        </div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="stat-pill" id="pill-state">
+        <span class="dot dot-idle" id="state-dot"></span>
+        <span id="state-label">Ready</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Iteration</span>
+        <span class="pill-val" id="hdr-iter">0</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Best Score</span>
+        <span class="pill-val score-val" id="hdr-score">—</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Elapsed</span>
+        <span class="pill-val" id="hdr-elapsed">0:00</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-secondary" id="btn-reports" onclick="window.open('/reports','_blank')">
+        📁 Reports
+      </button>
+      <button class="btn btn-pause hidden" id="btn-pause" onclick="pauseOptimizer()">
+        ⏸ Pause
+      </button>
+      <button class="btn btn-stop hidden" id="btn-stop" onclick="stopOptimizer()">
+        ⏹ Stop
+      </button>
+      <button class="btn btn-start" id="btn-start" onclick="startOptimizer()">
+        ▶ Start Optimizer
+      </button>
+    </div>
+  </header>
+
+  <!-- ── MAIN GRID ── -->
+  <main class="main-grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="col-left">
+
+      <!-- Score Chart -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📈 Score History</span>
+          <span class="card-badge" id="chart-badge">Waiting...</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="scoreChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Current Run Metrics -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🎯 Current Run Metrics</span>
+          <span class="run-id-badge" id="current-run-id">—</span>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">Net Profit</div>
+            <div class="metric-val" id="m-profit">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Calmar Ratio</div>
+            <div class="metric-val" id="m-calmar">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Profit Factor</div>
+            <div class="metric-val" id="m-pf">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Max Drawdown</div>
+            <div class="metric-val" id="m-dd">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Win Rate</div>
+            <div class="metric-val" id="m-wr">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total Trades</div>
+            <div class="metric-val" id="m-trades">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">MFE Capture</div>
+            <div class="metric-val" id="m-mfe">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Reversal Rate</div>
+            <div class="metric-val" id="m-rev">—</div>
+          </div>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar-label">
+            <span>Composite Score</span>
+            <span class="score-big" id="m-score">—</span>
+          </div>
+          <div class="score-bar-track">
+            <div class="score-bar-fill" id="score-bar-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col-right">
+
+      <!-- Phase tracker -->
+      <div class="card phase-card">
+        <div class="phase-steps">
+          <div class="phase-step" id="phase-baseline">
+            <div class="phase-dot"></div>
+            <div class="phase-name">Baseline</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-analyze">
+            <div class="phase-dot"></div>
+            <div class="phase-name">Analyze</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-explore">
+            <div class="phase-dot"></div>
+            <div class="phase-name">Test</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-validate">
+            <div class="phase-dot"></div>
+            <div class="phase-name">Validate</div>
+          </div>
+          <div class="phase-line"></div>
+          <div class="phase-step" id="phase-oos">
+            <div class="phase-dot"></div>
+            <div class="phase-name">OOS</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Findings feed -->
+      <div class="card findings-card">
+        <div class="card-header">
+          <span class="card-title">🔍 Analysis Findings</span>
+          <span class="card-badge" id="findings-count">0 findings</span>
+        </div>
+        <div class="findings-feed" id="findings-feed">
+          <div class="finding-empty">Findings will appear here after each analysis run...</div>
+        </div>
+      </div>
+
+      <!-- Parameter changes -->
+      <div class="card params-card">
+        <div class="card-header">
+          <span class="card-title">🔧 Parameter Changes</span>
+          <span class="card-badge" id="hyp-badge">Waiting...</span>
+        </div>
+        <div class="hyp-desc" id="hyp-desc">No hypothesis being tested yet.</div>
+        <div class="params-table-wrap" id="params-table-wrap">
+          <table class="params-table">
+            <thead><tr><th>Parameter</th><th>Before</th><th>After</th></tr></thead>
+            <tbody id="params-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live log -->
+      <div class="card log-card">
+        <div class="card-header">
+          <span class="card-title">📋 Live Log</span>
+          <button class="clear-btn" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-feed" id="log-feed">
+          <div class="log-line log-info">System ready. Click Start Optimizer to begin.</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── CANDIDATES PANEL ── -->
+  <section class="candidates-section">
+    <div class="card candidates-card">
+      <div class="card-header">
+        <span class="card-title">🏆 Promoted Candidates</span>
+        <span class="card-badge" id="cand-count">0 candidates</span>
+      </div>
+      <div class="candidates-list" id="candidates-list">
+        <div class="cand-empty">Validated candidates will appear here...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SCRIPTS ── -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

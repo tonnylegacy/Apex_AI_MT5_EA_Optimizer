@@ -1,0 +1,52 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+*.spec
+
+# ── Virtual Environments ──────────────────────────────────────────────────────
+venv/
+env/
+.env
+.venv/
+
+# ── MT5 Optimizer Runtime Files ───────────────────────────────────────────────
+# Don't commit generated run data or reports (can be large)
+runs/
+Reports/
+
+# Keep the optimizer database (optional — remove this line to commit it)
+optimizer.db
+
+# ── Sensitive Config (DO NOT COMMIT BROKER CREDENTIALS) ──────────────────────
+# config.yaml contains MT5 paths — safe to commit but exclude if it had passwords
+# config.secret.yaml
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS Files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── PyInstaller ───────────────────────────────────────────────────────────────
+*.exe
+*.zip
+dist/
+
+# ── Data files ────────────────────────────────────────────────────────────────
+*.parquet
+*.csv

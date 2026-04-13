@@ -1,0 +1,394 @@
+# Parameter Manifest — LEGSTECH_EA_V2
+# Generated from: LEGSTECH_EA_V2.set
+# Format: value = default, min/max/step = optimization bounds
+# Types: float | int | bool | enum
+# ─────────────────────────────────────────────────────────────
+
+parameters:
+
+  # ── Bot / Mode ─────────────────────────────────────────────
+  InpBotMode:
+    type: enum
+    values: [0, 1, 2]          # 0, 1, 2 per .set range 0→2 step 1
+    default: 1
+    category: mode
+    description: "Bot operating mode"
+
+  # ── Timeframe Selection (PERIOD_ codes) ────────────────────
+  # These are MT5 ENUM_TIMEFRAMES integer codes. Not optimized — fixed.
+  InpHTF:
+    type: fixed
+    default: 16408             # PERIOD_H4
+    category: timeframe
+  InpMTF:
+    type: fixed
+    default: 16388             # PERIOD_H1
+    category: timeframe
+  InpLTF:
+    type: fixed
+    default: 16385             # PERIOD_M30
+    category: timeframe
+
+  # ── Risk Management ────────────────────────────────────────
+  InpRiskType:
+    type: enum
+    values: [0, 1]             # 0=fixed lot, 1=percent risk
+    default: 1
+    category: risk
+
+  InpFixedLot:
+    type: float
+    min: 0.01
+    max: 1.0
+    step: 0.01
+    default: 0.01
+    category: risk
+    depends_on_value: {InpRiskType: 0}   # only active when using fixed lot mode
+
+  InpRiskPercent:
+    type: float
+    min: 0.5
+    max: 3.0
+    step: 0.5
+    default: 1.0
+    category: risk
+    depends_on_value: {InpRiskType: 1}   # only active when using percent risk mode
+
+  InpMaxDailyLossPct:
+    type: float
+    min: 1.0
+    max: 5.0
+    step: 0.5
+    default: 3.0
+    category: risk
+
+  InpMaxTradesPerDay:
+    type: int
+    min: 1
+    max: 10
+    step: 1
+    default: 5
+    category: risk
+
+  # ── Stop Loss ──────────────────────────────────────────────
+  InpSLType:
+    type: enum
+    values: [0, 1]             # 0=fixed pips, 1=ATR-based
+    default: 0
+    category: sl
+
+  InpSLBuffer:
+    type: float
+    min: 5.0
+    max: 30.0
+    step: 5.0
+    default: 10.0
+    category: sl
+    description: "Buffer pips added to SL"
+
+  InpFixedSLPips:
+    type: float
+    min: 50.0
+    max: 200.0
+    step: 10.0
+    default: 100.0
+    category: sl
+    depends_on_value: {InpSLType: 0}
+
+  InpMaxSLPips:
+    type: float
+    min: 100.0
+    max: 400.0
+    step: 50.0
+    default: 200.0
+    category: sl
+    description: "Hard cap on calculated SL size"
+
+  InpUseFractalSL:
+    type: bool
+    default: false             # 0 in .set
+    category: sl
+
+  # ── Take Profit ────────────────────────────────────────────
+  InpTPType:
+    type: enum
+    values: [0, 1]             # 0=RR ratio, 1=fixed pips
+    default: 0
+    category: tp
+
+  InpRRRatio:
+    type: float
+    min: 1.0
+    max: 3.0
+    step: 0.5
+    default: 1.5
+    category: tp
+    depends_on_value: {InpTPType: 0}
+
+  InpFixedTPPips:
+    type: float
+    min: 50.0
+    max: 200.0
+    step: 10.0
+    default: 100.0
+    category: tp
+    depends_on_value: {InpTPType: 1}
+
+  InpUseFractalFilter:
+    type: bool
+    default: false             # 0 in .set
+    category: tp
+
+  # ── Session Filter ─────────────────────────────────────────
+  InpUseSession:
+    type: bool
+    default: true              # 1 in .set
+    category: filter_session
+
+  InpSessionStart:
+    type: int
+    min: 0
+    max: 23
+    step: 1
+    default: 7
+    category: filter_session
+    depends_on: InpUseSession
+    description: "Session start hour (broker local time)"
+
+  InpSessionEnd:
+    type: int
+    min: 0
+    max: 23
+    step: 1
+    default: 20
+    category: filter_session
+    depends_on: InpUseSession
+    description: "Session end hour (broker local time)"
+
+  # ── Trade Limits ───────────────────────────────────────────
+  InpMaxOpenTrades:
+    type: int
+    min: 1
+    max: 3
+    step: 1
+    default: 1
+    category: risk
+
+  InpAllowMultiple:
+    type: bool
+    default: false             # 0 in .set
+    category: risk
+
+  # ── Execution ─────────────────────────────────────────────
+  InpMagicNumber:
+    type: fixed
+    default: 202402
+    category: execution
+    description: "Fixed — do not optimize"
+
+  InpSlippage:
+    type: int
+    min: 5
+    max: 30
+    step: 5
+    default: 10
+    category: execution
+
+  # ── Trailing Stop ─────────────────────────────────────────
+  InpUseTrailing:
+    type: bool
+    default: true              # 1 in .set
+    category: exit_trail
+
+  InpTrailStartPips:
+    type: float
+    min: 10.0
+    max: 50.0
+    step: 5.0
+    default: 20.0
+    category: exit_trail
+    depends_on: InpUseTrailing
+
+  InpTrailStepPips:
+    type: float
+    min: 5.0
+    max: 30.0
+    step: 5.0
+    default: 10.0
+    category: exit_trail
+    depends_on: InpUseTrailing
+
+  # ── Break Even ────────────────────────────────────────────
+  InpUseBreakeven:
+    type: bool
+    default: true              # 1 in .set
+    category: exit_be
+
+  InpBEPips:
+    type: float
+    min: 10.0
+    max: 40.0
+    step: 5.0
+    default: 15.0
+    category: exit_be
+    depends_on: InpUseBreakeven
+    description: "Pips in profit to activate breakeven"
+
+  InpBEBufferPips:
+    type: float
+    min: 1.0
+    max: 5.0
+    step: 1.0
+    default: 2.0
+    category: exit_be
+    depends_on: InpUseBreakeven
+    description: "Buffer pips above entry for breakeven SL"
+
+  # ── EMA Filter ────────────────────────────────────────────
+  InpUseEMA:
+    type: bool
+    default: true              # 1 in .set
+    category: filter_ema
+
+  InpEMAPeriod:
+    type: int
+    min: 20
+    max: 100
+    step: 10
+    default: 50
+    category: filter_ema
+    depends_on: InpUseEMA
+
+  InpRequireEMASlope:
+    type: bool
+    default: true              # 1 in .set
+    category: filter_ema
+    depends_on: InpUseEMA
+
+  InpEMASlopeBars:
+    type: int
+    min: 1
+    max: 3
+    step: 1
+    default: 1
+    category: filter_ema
+    depends_on: InpRequireEMASlope
+
+  # ── Entry Mode ────────────────────────────────────────────
+  InpEntryMode:
+    type: enum
+    values: [0, 1]
+    default: 1
+    category: entry
+
+  InpSLBufferMode:
+    type: enum
+    values: [0, 1]
+    default: 1
+    category: sl
+
+  # ── ATR ───────────────────────────────────────────────────
+  InpATRPeriod:
+    type: int
+    min: 10
+    max: 20
+    step: 2
+    default: 14
+    category: atr
+
+  InpATRMultiplier:
+    type: float
+    min: 0.3
+    max: 1.0
+    step: 0.1
+    default: 0.5
+    category: atr
+
+  # ── Spread Guard ──────────────────────────────────────────
+  InpUseSpreadGuard:
+    type: bool
+    default: true              # 1 in .set
+    category: filter_spread
+
+  InpMaxSpreadPips:
+    type: float
+    min: 10.0
+    max: 50.0
+    step: 5.0
+    default: 30.0
+    category: filter_spread
+    depends_on: InpUseSpreadGuard
+
+  # ── Minimum R:R Gate ──────────────────────────────────────
+  InpUseMinRR:
+    type: bool
+    default: true              # 1 in .set
+    category: filter_rr
+
+  InpMinRRRatio:
+    type: float
+    min: 1.0
+    max: 3.0
+    step: 0.5
+    default: 1.5
+    category: filter_rr
+    depends_on: InpUseMinRR
+
+  # ── Score Gate ────────────────────────────────────────────
+  InpUseScoreGate:
+    type: bool
+    default: true              # 1 in .set
+    category: filter_score
+
+  InpMinScore:
+    type: int
+    min: 6
+    max: 11
+    step: 1
+    default: 8
+    category: filter_score
+    depends_on: InpUseScoreGate
+    description: "Minimum signal quality score required to enter trade"
+
+  # ── Tester-Specific (fixed during automation) ─────────────
+  InpTesterMode:
+    type: fixed
+    default: 1
+    category: tester
+    description: "Must be 1 during automated backtesting"
+
+  InpTesterInitDeposit:
+    type: fixed
+    default: 10000.0
+    category: tester
+
+  InpTesterSpreadPts:
+    type: int
+    min: 10
+    max: 50
+    step: 5
+    default: 20
+    category: tester
+    description: "Spread in points used in tester (20 pts = 2.0 pips for XAUUSD)"
+
+  InpShowPanel:
+    type: fixed
+    default: 0                 # force off during automation (no GUI needed)
+    category: tester
+
+# ── Parameter categories (for mutation engine grouping) ──────
+categories:
+  mode:            [InpBotMode]
+  risk:            [InpRiskType, InpFixedLot, InpRiskPercent, InpMaxDailyLossPct, InpMaxTradesPerDay, InpMaxOpenTrades, InpAllowMultiple]
+  sl:              [InpSLType, InpSLBuffer, InpFixedSLPips, InpMaxSLPips, InpUseFractalSL, InpSLBufferMode]
+  tp:              [InpTPType, InpRRRatio, InpFixedTPPips, InpUseFractalFilter]
+  exit_trail:      [InpUseTrailing, InpTrailStartPips, InpTrailStepPips]
+  exit_be:         [InpUseBreakeven, InpBEPips, InpBEBufferPips]
+  filter_session:  [InpUseSession, InpSessionStart, InpSessionEnd]
+  filter_ema:      [InpUseEMA, InpEMAPeriod, InpRequireEMASlope, InpEMASlopeBars]
+  filter_spread:   [InpUseSpreadGuard, InpMaxSpreadPips]
+  filter_rr:       [InpUseMinRR, InpMinRRRatio]
+  filter_score:    [InpUseScoreGate, InpMinScore]
+  entry:           [InpEntryMode]
+  atr:             [InpATRPeriod, InpATRMultiplier]
+  tester:          [InpTesterMode, InpTesterInitDeposit, InpTesterSpreadPts, InpShowPanel]

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reports — MT5 Optimizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0d14; color: #e2e8f8; font-family: 'Inter', sans-serif; font-size: 13px; padding: 32px; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+    h1 { font-size: 22px; font-weight: 800; }
+    .sub { color: #6b7fa3; font-size: 12px; margin-top: 4px; }
+    .back-link { color: #4f8ef7; text-decoration: none; font-size: 12px; }
+    .back-link:hover { text-decoration: underline; }
+    .empty { color: #3d4f70; text-align: center; padding: 80px 0; font-size: 16px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .run-card {
+      background: #111621; border: 1px solid #1e2740; border-radius: 12px; padding: 18px 20px;
+      transition: border-color 0.2s, transform 0.2s;
+      text-decoration: none; color: inherit; display: block;
+    }
+    .run-card:hover { border-color: #4f8ef7; transform: translateY(-2px); }
+    .run-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .run-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6b7fa3; }
+    .run-score { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: #22d3a5; }
+    .run-phase { font-size: 10px; padding: 2px 8px; border-radius: 4px; background: rgba(79,142,247,0.15); color: #4f8ef7; font-weight: 700; text-transform: uppercase; }
+    .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+    .m { text-align: center; background: #161c2a; border-radius: 6px; padding: 6px 8px; }
+    .m-label { font-size: 9px; color: #6b7fa3; text-transform: uppercase; letter-spacing: 0.5px; }
+    .m-val { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+    .delta-up { color: #22d3a5; } .delta-dn { color: #f44; }
+    .run-ts { font-size: 10px; color: #3d4f70; margin-top: 10px; font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>📁 Optimization Reports</h1>
+      <div class="sub">{{ runs|length }} run(s) recorded · Click any card to open the full report</div>
+    </div>
+    <a class="back-link" href="/">← Back to Dashboard</a>
+  </header>
+
+  {% if not runs %}
+  <div class="empty">No reports yet.<br>Start the optimizer to generate your first run report.</div>
+  {% else %}
+  <div class="cards">
+    {% for r in runs %}
+    <a class="run-card" href="/reports/{{ r.run_id }}/summary.html" target="_blank">
+      <div class="run-header">
+        <div>
+          <div class="run-id">{{ r.run_id }}</div>
+          <div class="run-score">{{ "%.4f"|format(r.score) }}</div>
+        </div>
+        <span class="run-phase">{{ r.phase }}</span>
+      </div>
+      <div class="metrics-row">
+        <div class="m">
+          <div class="m-label">Net Profit</div>
+          <div class="m-val {% if r.net_profit >= 0 %}delta-up{% else %}delta-dn{% endif %}">
+            ${{ "%.0f"|format(r.net_profit) }}
+          </div>
+        </div>
+        <div class="m">
+          <div class="m-label">Calmar</div>
+          <div class="m-val">{{ "%.2f"|format(r.calmar) }}</div>
+        </div>
+        <div class="m">
+          <div class="m-label">Drawdown</div>
+          <div class="m-val delta-dn">{{ "%.1f"|format(r.drawdown_pct) }}%</div>
+        </div>
+        <div class="m">
+          <div class="m-label">PF</div>
+          <div class="m-val">{{ "%.2f"|format(r.profit_factor) }}</div>
+        </div>
+        <div class="m">
+          <div class="m-label">Trades</div>
+          <div class="m-val">{{ r.total_trades }}</div>
+        </div>
+        <div class="m">
+          <div class="m-label">Score Δ</div>
+          <div class="m-val {% if r.score_delta >= 0 %}delta-up{% else %}delta-dn{% endif %}">
+            {{ "%+.4f"|format(r.score_delta) }}
+          </div>
+        </div>
+      </div>
+      <div class="run-ts">{{ r.ts[:19].replace("T"," ") }} UTC</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</body>
+</html>

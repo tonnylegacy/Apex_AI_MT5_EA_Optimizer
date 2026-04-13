@@ -1,0 +1,17 @@
+pandas>=2.1
+numpy>=1.26
+pyarrow>=14.0
+lxml>=4.9
+pydantic>=2.5
+pyyaml>=6.0
+loguru>=0.7
+rich>=13.0
+sqlalchemy>=2.0
+scipy>=1.11
+plotly>=5.18
+pytest>=7.4
+flask
+flask-socketio
+eventlet
+jinja2
+pyinstaller

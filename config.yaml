@@ -1,0 +1,103 @@
+# MT5 EA Strategy Optimizer — Master Configuration
+# LEGSTECH_EA_V2 | XAUUSD | H1
+# ─────────────────────────────────────────────
+
+ea:
+  name: "LEGSTECH_EA_V2"
+  file: "LEGSTECH_EA_V2"          # .ex5 file name (no extension), in Experts/
+  symbol: "XAUUSD"
+  timeframe: "H1"                  # Period code used in INI (H1 = 16385... see MT5 period codes)
+  mt5_period_code: 16385           # PERIOD_H1 numeric code for [Tester] Period
+
+periods:
+  train_start: "2022.01.01"
+  train_end:   "2023.12.31"
+  validate_start: "2024.01.01"
+  validate_end:   "2024.06.30"
+  oos_start:   "2024.07.01"        # LOCKED — never touched during optimization
+  oos_end:     "2024.12.31"
+
+broker:
+  timezone_offset_hours: 2         # Broker server = UTC+2. Set to 0 for UTC brokers.
+  deposit: 10000.0
+  currency: "USD"
+  leverage: 100
+  # Session definitions in BROKER LOCAL TIME (will be normalized to UTC internally)
+  sessions:
+    Asian:    {start: 0,  end: 9}
+    London:   {start: 9,  end: 18}   # UTC+2: 07:00 UTC = 09:00 broker
+    NY:       {start: 15, end: 24}   # UTC+2: 13:00 UTC = 15:00 broker
+    LondonNY: {start: 15, end: 18}   # Overlap
+
+mt5:
+  terminal_exe: "C:/Program Files/MetaTrader 5/terminal64.exe"
+  # Terminal data folder — detected automatically from your MetaQuotes installation
+  appdata_path: "C:/Users/DELL/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075"
+  # MQL5 Files folder — TradeLogger CSV is written here during backtests
+  # NOTE: Strategy Tester writes to the Agent subfolder, not the terminal Files folder
+  mql5_files_path: "C:/Users/DELL/AppData/Roaming/MetaQuotes/Tester/D0E8209F77C8CF37AD8BF550E51FF075/Agent-127.0.0.1-3000/MQL5/Files"
+  tester_model: 4                   # 4=OHLC M1 (fast, reliable). Use 0=Every Tick only if full tick data available
+  tester_timeout_seconds: 1800      # 30 min max per test
+  shutdown_terminal: 1              # ShutdownTerminal=1 in INI — MT5 closes after test
+  data_readiness_wait_seconds: 10   # Wait N seconds after MT5 launch for data to load before testing
+  kill_on_start: true               # Always kill existing MT5 before each run
+  report_subdir: "runs"             # relative to project root
+
+logging:
+  level: "INFO"                     # DEBUG | INFO | WARNING | ERROR
+  file: "optimizer.log"
+
+thresholds:
+  min_trades: 50                    # below this → no statistical confidence
+  min_profit_factor: 1.20
+  min_calmar: 0.35
+  max_oos_degradation: 0.30         # 30% drop IS→OOS is acceptable; above = reject
+  sensitivity_tolerance: 0.30       # ±10% param → >30% calmar drop = fragile, reject
+  min_wfv_ratio: 0.70               # OOS calmar must be ≥ 70% of IS calmar in WFV
+
+scoring:
+  weights:
+    calmar:            0.35
+    profit_factor:     0.20
+    mfe_capture:       0.20         # avg MFE capture ratio (exit quality)
+    session_stability: 0.15         # 1 - std_dev of per-session Calmar
+    recovery_factor:   0.10
+  normalization:
+    calmar:            {lo: 0.0, hi: 4.0}
+    profit_factor:     {lo: 1.0, hi: 3.5}
+    mfe_capture:       {lo: 0.0, hi: 1.0}
+    session_stability: {lo: 0.0, hi: 1.0}
+    recovery_factor:   {lo: 0.0, hi: 6.0}
+  significance_trades: 150          # full significance weight at this trade count
+
+analysis:
+  reversal:
+    mfe_threshold_pips: 15.0        # minimum MFE to classify as reversal candidate
+    min_reversal_rate:  0.15        # above this → HIGH finding
+    permutation_n:      500         # permutation tests for significance
+  time_performance:
+    min_trades_per_bucket: 10       # ignore time buckets with fewer trades
+    z_score_threshold: -1.5         # flag as negative edge
+    permutation_n: 1000
+  entry_exit:
+    poor_exit_quality:  0.55        # below this → HIGH finding
+    poor_entry_quality: 0.40        # below this → HIGH finding
+  equity_curve:
+    max_flatness_score: 0.50        # above this → raise finding
+    min_r_squared:      0.70        # below this → high variance
+
+mutation:
+  max_hypotheses_per_cycle: 3       # test at most N hypotheses before picking best
+  dedup_lookback_runs: 10           # avoid re-testing same delta seen in last N runs
+  explore_fallback_after: 5         # switch to explore if N targeted runs all rejected
+
+optimization:
+  max_iterations: 50
+  convergence_window: 3             # stop if no improvement in this many promotions
+  convergence_threshold: 0.04       # minimum composite score delta to count as improvement
+
+paths:
+  db: "optimizer.db"
+  runs_dir: "runs"
+  reports_dir: "reports"
+  log_file: "optimizer.log"

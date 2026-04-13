@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Run {{ run_id }} — MT5 Optimizer Report</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0d14; color: #e2e8f8; font-family: 'Inter', sans-serif; font-size: 13px; padding: 32px; }
+    h1  { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .sub { color: #6b7fa3; font-size: 12px; font-family: 'JetBrains Mono', monospace; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    .card { background: #111621; border: 1px solid #1e2740; border-radius: 10px; padding: 14px 18px; }
+    .card-label { font-size: 10px; color: #6b7fa3; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .card-val   { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .green { color: #22d3a5; } .red { color: #f44; } .blue { color: #4f8ef7; }
+    .section-title { font-size: 14px; font-weight: 700; margin: 24px 0 12px; border-left: 3px solid #4f8ef7; padding-left: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+    th { text-align: left; padding: 8px 12px; color: #6b7fa3; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #1e2740; }
+    td { padding: 8px 12px; border-bottom: 1px solid rgba(30,39,64,0.4); font-family: 'JetBrains Mono', monospace; }
+    tr:hover td { background: rgba(79,142,247,0.04); }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+    .high   { background: rgba(244,68,68,0.15); color: #f44; }
+    .medium { background: rgba(251,191,36,0.15); color: #fbbf24; }
+    .low    { background: rgba(79,142,247,0.1); color: #4f8ef7; }
+    .win    { color: #22d3a5; } .loss { color: #f44; } .reversal { color: #fbbf24; }
+    .score-big { font-size: 48px; font-weight: 800; color: #22d3a5; text-align: center; padding: 20px 0; }
+    .back-link { display: inline-block; margin-bottom: 20px; color: #4f8ef7; text-decoration: none; font-size: 12px; }
+    .back-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <a class="back-link" href="javascript:history.back()">← Back to Dashboard</a>
+  <h1>Run Report: {{ run_id }}</h1>
+  <div class="sub">Generated: {{ generated }} · Phase: {{ summary.phase }}</div>
+
+  <!-- Score -->
+  <div class="score-big">{{ "%.4f"|format(summary.score) }}</div>
+
+  <!-- Key Metrics -->
+  <div class="grid">
+    <div class="card">
+      <div class="card-label">Net Profit</div>
+      <div class="card-val {% if metrics.net_profit >= 0 %}green{% else %}red{% endif %}">
+        ${{ "%.2f"|format(metrics.net_profit) }}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Calmar Ratio</div>
+      <div class="card-val blue">{{ "%.3f"|format(metrics.calmar_ratio) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Profit Factor</div>
+      <div class="card-val {% if metrics.profit_factor >= 1.3 %}green{% else %}red{% endif %}">
+        {{ "%.3f"|format(metrics.profit_factor) }}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Max Drawdown</div>
+      <div class="card-val red">{{ "%.1f"|format(metrics.max_drawdown_pct * 100) }}%</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Win Rate</div>
+      <div class="card-val">{{ "%.1f"|format(metrics.win_rate * 100) }}%</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total Trades</div>
+      <div class="card-val">{{ metrics.total_trades }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Sharpe Ratio</div>
+      <div class="card-val">{{ "%.3f"|format(metrics.sharpe_ratio) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Recovery Factor</div>
+      <div class="card-val">{{ "%.2f"|format(metrics.recovery_factor) }}</div>
+    </div>
+  </div>
+
+  {% if metrics.avg_mfe_capture is not none %}
+  <div class="grid">
+    <div class="card">
+      <div class="card-label">MFE Capture</div>
+      <div class="card-val green">{{ "%.1f"|format(metrics.avg_mfe_capture * 100) }}%</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Reversal Rate</div>
+      <div class="card-val {% if (metrics.reversal_rate or 0) > 0.2 %}red{% else %}green{% endif %}">
+        {{ "%.1f"|format((metrics.reversal_rate or 0) * 100) }}%
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg MFE Pips</div>
+      <div class="card-val">{{ "%.1f"|format(metrics.avg_mfe_pips or 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg MAE Pips</div>
+      <div class="card-val">{{ "%.1f"|format(metrics.avg_mae_pips or 0) }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Score vs Baseline -->
+  {% if baseline_score %}
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-label">Score vs Baseline</div>
+    <div style="font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:6px">
+      {{ "%.4f"|format(baseline_score) }} →
+      <span class="{% if summary.score > baseline_score %}green{% else %}red{% endif %}">
+        {{ "%.4f"|format(summary.score) }}
+        ({{ "%+.4f"|format(summary.score - baseline_score) }})
+      </span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Hypothesis info -->
+  {% if hypothesis %}
+  <div class="section-title">Hypothesis</div>
+  <div class="card" style="margin-bottom:24px">
+    <div style="margin-bottom:8px;font-weight:600">{{ hypothesis.description }}</div>
+    <div style="color:#6b7fa3;font-size:11px">Strategy: {{ hypothesis.strategy }} · Rule: {{ hypothesis.kb_rule_id }}</div>
+  </div>
+  {% endif %}
+
+  <!-- Findings -->
+  {% if findings %}
+  <div class="section-title">Analysis Findings ({{ findings|length }})</div>
+  <table>
+    <thead>
+      <tr><th>Analyzer</th><th>Severity</th><th>Confidence</th><th>Finding</th><th>Est. Impact</th></tr>
+    </thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td>{{ f.analyzer }}</td>
+        <td><span class="badge {{ f.severity }}">{{ f.severity.upper() }}</span></td>
+        <td>{{ "%.0f"|format(f.confidence * 100) }}%</td>
+        <td style="max-width:400px;white-space:normal;font-family:'Inter',sans-serif">{{ f.description }}</td>
+        <td>${{ "%.0f"|format(f.impact_estimate_pnl) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- Parameters -->
+  {% if params %}
+  <div class="section-title">Parameter Configuration</div>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th><th>Changed</th></tr></thead>
+    <tbody>
+      {% for p in params %}
+      <tr>
+        <td {% if p.changed %}class="green"{% endif %}>{{ p.name }}</td>
+        <td {% if p.changed %}class="green"{% endif %}>{{ p.new }}</td>
+        <td>{% if p.changed %}✅ {{ p.old }} → {{ p.new }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- Trade sample -->
+  {% if trades_sample %}
+  <div class="section-title">Trade Sample (first 50)</div>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Open</th><th>Close</th><th>Dir</th><th>Net $</th><th>MFE pip</th><th>MAE pip</th><th>Session</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      {% for t in trades_sample %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ t.open_time }}</td>
+        <td>{{ t.close_time }}</td>
+        <td>{{ t.direction }}</td>
+        <td class="{% if t.net_money >= 0 %}win{% else %}loss{% endif %}">
+          ${{ "%.2f"|format(t.net_money) }}
+        </td>
+        <td>{{ t.mfe_pips or '—' }}</td>
+        <td>{{ t.mae_pips or '—' }}</td>
+        <td>{{ t.session or '—' }}</td>
+        <td class="{{ t.result_class or '' }}">{{ t.result_class or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+</body>
+</html>
