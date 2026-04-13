@@ -34,10 +34,12 @@ from reports.writer import ReportWriter
 import pandas as pd
 
 BASE_DIR      = Path(__file__).parent
-MANIFEST_PATH = BASE_DIR / "mutation" / "param_manifest.yaml"
 KB_PATH       = BASE_DIR / "mutation" / "knowledge_base.yaml"
 DB_PATH       = BASE_DIR / "optimizer.db"
 RUNS_DIR      = BASE_DIR / "runs"
+
+# Keep MANIFEST_PATH for MutationEngine (still uses it for advanced mode)
+MANIFEST_PATH = BASE_DIR / "mutation" / "param_manifest.yaml"
 
 
 class OptimizerLoop:
@@ -394,11 +396,16 @@ class OptimizerLoop:
             run_id=run_id, params=params,
             period_start=period_start, period_end=period_end,
             output_dir=run_dir, phase=phase,
+            ea_file=self._profile.ex5_file,
+            ea_symbol=self._profile.symbol,
+            ea_timeframe=self._profile.timeframe,
         )
 
         run = Run(
-            run_id=run_id, ea_name=cfg["ea"]["name"],
-            symbol=cfg["ea"]["symbol"], timeframe=cfg["ea"]["timeframe"],
+            run_id=run_id,
+            ea_name=self._profile.name,
+            symbol=self._profile.symbol,
+            timeframe=self._profile.timeframe,
             period_start=period_start, period_end=period_end,
             params=params, phase=phase, hypothesis_id=hypothesis_id,
             tester_model=cfg["mt5"]["tester_model"],
@@ -407,8 +414,11 @@ class OptimizerLoop:
         store.save_run(run)
 
         self._emit("log", {"level": "info", "msg": f"⏳ MT5 running: {run_id}"})
-        result = runner.run(run_id, ini_path, run_dir / "report",
-                            log_csv_search_dir=Path(cfg["mt5"]["mql5_files_path"]))
+        result = runner.run(
+            run_id, ini_path, run_dir / "report",
+            log_csv_search_dir=Path(cfg["mt5"]["mql5_files_path"]),
+            profile=self._profile,
+        )
 
         if not result.success:
             self._emit("run_failed", {"run_id": run_id, "error": result.error_message})
@@ -492,8 +502,36 @@ class OptimizerLoop:
 
     def _build_components(self):
         cfg = self.cfg
-        store    = DataStore(DB_PATH, RUNS_DIR)
-        builder  = IniBuilder(self.config_path, str(MANIFEST_PATH))
+
+        # ── EA Registry: load profile + schema ────────────────────────────────
+        from ea.registry import EARegistry
+        reg     = EARegistry(self.config_path)
+        ea_name = cfg.get("ea", {}).get("name", "LEGSTECH_EA_V2")
+        try:
+            self._profile = reg.get(ea_name)
+            schema        = reg.get_schema(self._profile)
+            logger.info(f"Using EA profile from registry: {ea_name} (mode={self._profile.mode})")
+        except KeyError:
+            # Profile not in registry — fall back to legacy manifest
+            logger.warning(f"EA {ea_name!r} not in registry, using legacy manifest")
+            from ea.registry import EAProfile
+            self._profile = EAProfile(
+                name=ea_name,
+                ex5_file=cfg["ea"]["file"],
+                set_template="",
+                symbol=cfg["ea"]["symbol"],
+                timeframe=cfg["ea"]["timeframe"],
+            )
+            schema = None  # builder will use manifest
+
+        # ── Component construction ─────────────────────────────────────────────
+        store   = DataStore(DB_PATH, RUNS_DIR)
+
+        if schema is not None:
+            builder = IniBuilder(self.config_path, schema=schema)
+        else:
+            builder = IniBuilder(self.config_path, str(MANIFEST_PATH))
+
         runner   = MT5Runner(self.config_path)
         parser   = ReportParser()
         log_rdr  = TradeLogReader(

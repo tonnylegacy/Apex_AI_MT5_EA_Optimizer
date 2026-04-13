@@ -1,7 +1,13 @@
 # MT5 EA Strategy Optimizer — Master Configuration
-# EA identity (name, symbol, timeframe, .set file) is now managed
-# in ea_registry.yaml via the EA Registry. See ea/registry.py.
+# EA identity is managed in ea_registry.yaml (source of truth for new code).
+# The ea: block below is kept as a bridge for legacy code paths.
 # ─────────────────────────────────────────────
+
+ea:
+  name: "LEGSTECH_EA_V2"
+  file: "LEGSTECH_EA_V2"
+  symbol: "XAUUSD"
+  timeframe: "H1"
 
 periods:
   train_start: "2022.01.01"
