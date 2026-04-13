@@ -94,13 +94,23 @@ def history():
 @app.route("/reports/")
 def reports_index():
     """Reports browser page — fixes the 404 on the Reports button."""
+    import json, re
     runs = []
     for run_dir in sorted(REPORTS_DIR.iterdir(), reverse=True) if REPORTS_DIR.exists() else []:
+        if not run_dir.is_dir():
+            continue
         summary = run_dir / "summary.json"
         if summary.exists():
-            import json
             try:
-                runs.append(json.loads(summary.read_text()))
+                txt = summary.read_text(encoding="utf-8")
+                # Fix legacy NaN values (invalid JSON) written before the fix
+                txt = re.sub(r'\bNaN\b', 'null', txt)
+                txt = re.sub(r'\bInfinity\b', 'null', txt)
+                data = json.loads(txt)
+                # Replace None scores with 0 for display
+                data["score"]       = data.get("score") or 0
+                data["score_delta"] = data.get("score_delta") or 0
+                runs.append(data)
             except Exception:
                 pass
     return render_template("reports_index.html", runs=runs[:100])
@@ -114,14 +124,22 @@ def reports_file(filename):
 
 @app.route("/api/runs")
 def runs_list():
+    import json, re
     runs = []
     if REPORTS_DIR.exists():
         for run_dir in sorted(REPORTS_DIR.iterdir(), reverse=True):
+            if not run_dir.is_dir():
+                continue
             summary = run_dir / "summary.json"
             if summary.exists():
-                import json
                 try:
-                    runs.append(json.loads(summary.read_text()))
+                    txt = summary.read_text(encoding="utf-8")
+                    txt = re.sub(r'\bNaN\b', 'null', txt)
+                    txt = re.sub(r'\bInfinity\b', 'null', txt)
+                    data = json.loads(txt)
+                    data["score"]       = data.get("score") or 0
+                    data["score_delta"] = data.get("score_delta") or 0
+                    runs.append(data)
                 except Exception:
                     pass
     return jsonify(runs[:50])

@@ -66,6 +66,7 @@ class OptimizerLoop:
         self.current_run_id: Optional[str] = None
         self.score_history: list[dict]     = []
         self.run_start_ts: Optional[float] = None
+        self.session_tested_deltas: list[dict] = []  # dedup within this session only
 
         with open(config_path) as f:
             self.cfg = yaml.safe_load(f)
@@ -177,12 +178,11 @@ class OptimizerLoop:
                 self._emit("log", {"level": "warn", "msg": "No actionable findings. Stopping."})
                 break
 
-            # Mutation proposals
-            recent_deltas = store.get_recent_param_deltas(cfg["mutation"]["dedup_lookback_runs"])
+            # Mutation proposals — only dedup within this session
             hypotheses = mutator.propose(
                 findings=findings,
                 current_params=current_params,
-                recent_deltas=recent_deltas,
+                recent_deltas=self.session_tested_deltas,
                 max_proposals=cfg["mutation"]["max_hypotheses_per_cycle"],
             )
 
@@ -249,6 +249,7 @@ class OptimizerLoop:
                              hypothesis=hyp, baseline_score=current_metrics.composite_score)
 
                 store.update_hypothesis_status(hyp.hypothesis_id, "tested", run_id)
+                self.session_tested_deltas.append(hyp.param_delta)  # track for session dedup
 
                 if iteration_best is None or test_metrics.composite_score > iteration_best.composite_score:
                     iteration_best        = test_metrics
