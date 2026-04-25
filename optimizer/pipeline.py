@@ -96,6 +96,13 @@ class OptimizationPipeline:
         # All completed runs (for history restoration)
         self._completed_runs: list[dict] = []
 
+        # Live activity logs — persisted in-memory so a dashboard refresh during
+        # a run can replay them via /api/thinking, /api/param_changes, /api/validation.
+        self._thinking_log:    list[dict] = []
+        self._param_changes:   list[dict] = []
+        self._validation_log:  list[dict] = []
+        self._early_term:      Optional[dict] = None
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def configure(self, session: SessionConfig) -> None:
@@ -187,6 +194,11 @@ class OptimizationPipeline:
         self._ai_insights.clear()
         self._run_findings.clear()
         self._run_insights.clear()
+        # Reset live-activity logs for the new run
+        self._thinking_log    = []
+        self._param_changes   = []
+        self._validation_log  = []
+        self._early_term      = None
 
         budget.start()
 
@@ -1013,6 +1025,10 @@ class OptimizationPipeline:
         }
         if meta:
             payload["meta"] = meta
+        # Persist for dashboard refresh — keep last 200 entries
+        self._thinking_log.append(payload)
+        if len(self._thinking_log) > 200:
+            self._thinking_log = self._thinking_log[-200:]
         self._emit("ai_thinking", payload)
 
     def _emit_early_termination(self, reason_code: str, message: str, details: dict = None) -> None:
@@ -1033,9 +1049,23 @@ class OptimizationPipeline:
         }
         if details:
             payload["details"] = details
+        self._early_term = payload  # remember for refresh
         self._emit("early_termination", payload)
 
     def _emit(self, event: str, data: dict = {}) -> None:
+        # Tee select live-activity events into in-memory logs so a dashboard
+        # refresh during the run can replay them via REST.
+        try:
+            if event == "param_changes":
+                self._param_changes.append(data)
+                if len(self._param_changes) > 50:
+                    self._param_changes = self._param_changes[-50:]
+            elif event in ("validation_start", "validation_run_start", "validation_run_complete", "validation_done"):
+                self._validation_log.append({"event": event, **data})
+                if len(self._validation_log) > 40:
+                    self._validation_log = self._validation_log[-40:]
+        except Exception:
+            pass
         try:
             self.socketio.emit(event, data)
         except Exception as e:

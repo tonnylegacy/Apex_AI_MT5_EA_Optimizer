@@ -1043,12 +1043,22 @@ function renderThinkingFeed() {
 }
 
 function addThinking(d) {
+  // For replayed events, use the original ts from the server. For live ones, use now.
+  let timeLabel = nowStr();
+  if (d.ts) {
+    try {
+      const dt = new Date(d.ts);
+      if (!isNaN(dt)) {
+        timeLabel = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+    } catch (_) {}
+  }
   const entry = {
     msg:       d.msg || '',
     kind:      d.kind || 'info',
     iteration: d.iteration,
     phase:     d.phase,
-    time:      nowStr(),
+    time:      timeLabel,
   };
   thinkingFeedState.entries.push(entry);
   if (thinkingFeedState.entries.length > MAX_THINKING_ENTRIES) {
@@ -1324,9 +1334,10 @@ safe('btn-stop', stopBtn => {
 
 async function restoreHistory() {
   try {
-    const [histResp, aiResp] = await Promise.all([
+    const [histResp, aiResp, liveResp] = await Promise.all([
       fetch('/api/history'),
       fetch('/api/ai_insight/latest'),
+      fetch('/api/live_activity'),
     ]);
 
     const runs = await histResp.json();
@@ -1365,6 +1376,60 @@ async function restoreHistory() {
     if (insight) {
       updateAIPanel(insight);
       addLog('AI insight restored (run: ' + (insight.run_id || '?') + ').', 'info');
+    }
+
+    // ── Restore Live Intelligence (thinking feed, param changes, validation, banner) ──
+    // This is what makes a refresh-mid-run feel like nothing happened.
+    const live = await liveResp.json();
+    if (live) {
+      // Thinking feed
+      const thinking = Array.isArray(live.thinking) ? live.thinking : [];
+      thinking.forEach(t => addThinking(t));
+
+      // Param changes
+      const pcs = Array.isArray(live.param_changes) ? live.param_changes : [];
+      pcs.forEach(pc => addParamChanges(pc));
+
+      // Validation panel
+      const val = Array.isArray(live.validation) ? live.validation : [];
+      val.forEach(v => {
+        if (v.event === 'validation_start') {
+          validationState.runs = [];
+          validationState.planned = v.planned_runs || 0;
+          validationState.complete = 0;
+          validationState.active = true;
+        } else if (v.event === 'validation_run_start') {
+          validationRunStart(v);
+        } else if (v.event === 'validation_run_complete') {
+          validationRunComplete(v);
+        } else if (v.event === 'validation_done') {
+          validationDone(v);
+        }
+      });
+      if (val.length) renderValidation();
+
+      // Early-termination banner
+      if (live.early_termination) {
+        showEarlyTermination(live.early_termination);
+      }
+
+      // Phase tracker — restore active phase even if no events have arrived yet
+      const phaseMapLocal = { phase1: 1, phase2: 2, phase2_ai: 2, phase3: 3, phase3_oos: 3, phase3_sens: 3 };
+      const ph = phaseMapLocal[live.phase] || (live.running ? 1 : 0);
+      if (ph) {
+        setPhaseActive(ph, { mode: live.phase_mode });
+      }
+      if (live.running) {
+        setRunningState(true, live.phase || 'Optimizing...');
+      }
+
+      if (thinking.length || pcs.length || val.length) {
+        addLog(
+          `Restored live activity: ${thinking.length} thinking, `
+          + `${pcs.length} param-change iterations, ${val.length} validation events.`,
+          'info'
+        );
+      }
     }
   } catch (e) {
     addLog('History restore: ' + e.message, 'warn');

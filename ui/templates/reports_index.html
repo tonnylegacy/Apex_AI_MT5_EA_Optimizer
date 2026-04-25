@@ -2,92 +2,408 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Reports — MT5 Optimizer</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <title>Reports — APEX MT5 Optimizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0d14; color: #e2e8f8; font-family: 'Inter', sans-serif; font-size: 13px; padding: 32px; }
-    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
-    h1 { font-size: 22px; font-weight: 800; }
-    .sub { color: #6b7fa3; font-size: 12px; margin-top: 4px; }
-    .back-link { color: #4f8ef7; text-decoration: none; font-size: 12px; }
-    .back-link:hover { text-decoration: underline; }
-    .empty { color: #3d4f70; text-align: center; padding: 80px 0; font-size: 16px; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-    .run-card {
-      background: #111621; border: 1px solid #1e2740; border-radius: 12px; padding: 18px 20px;
-      transition: border-color 0.2s, transform 0.2s;
-      text-decoration: none; color: inherit; display: block;
+    :root {
+      --bg: #080d1a; --card: #0f1629; --border: rgba(255,255,255,0.08);
+      --text: #e2e8f0; --muted: #64748b; --accent: #4f46e5; --accent2: #7c6dfa;
+      --green: #10b981; --red: #ef4444; --yellow: #f59e0b; --teal: #00d4aa;
     }
-    .run-card:hover { border-color: #4f8ef7; transform: translateY(-2px); }
-    .run-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-    .run-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6b7fa3; }
-    .run-score { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: #22d3a5; }
-    .run-phase { font-size: 10px; padding: 2px 8px; border-radius: 4px; background: rgba(79,142,247,0.15); color: #4f8ef7; font-weight: 700; text-transform: uppercase; }
-    .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-    .m { text-align: center; background: #161c2a; border-radius: 6px; padding: 6px 8px; }
-    .m-label { font-size: 9px; color: #6b7fa3; text-transform: uppercase; letter-spacing: 0.5px; }
-    .m-val { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
-    .delta-up { color: #22d3a5; } .delta-dn { color: #f44; }
-    .run-ts { font-size: 10px; color: #3d4f70; margin-top: 10px; font-family: 'JetBrains Mono', monospace; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; padding: 28px 32px 80px; min-height: 100vh; }
+    a { color: var(--accent2); }
+    header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 18px; gap: 24px; flex-wrap: wrap; }
+    h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .back-link { color: var(--accent2); text-decoration: none; font-size: 12px; font-weight: 500; }
+    .back-link:hover { text-decoration: underline; }
+
+    /* Toolbar: search + phase filter */
+    .toolbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 10px 14px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; margin-bottom: 18px;
+    }
+    .search {
+      flex: 1; min-width: 220px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 11px; color: var(--text); font-size: 13px;
+      font-family: inherit;
+    }
+    .search:focus { outline: none; border-color: var(--accent); }
+    .filter-chip {
+      padding: 5px 11px; border-radius: 6px; background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border); color: var(--muted); font-size: 12px;
+      cursor: pointer; user-select: none; font-weight: 500;
+    }
+    .filter-chip:hover { color: var(--text); }
+    .filter-chip.active { background: rgba(79,70,229,0.18); color: var(--accent2); border-color: rgba(79,70,229,0.4); }
+    .toolbar-stats { font-size: 11px; color: var(--muted); margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+
+    .empty { color: var(--muted); text-align: center; padding: 80px 0; font-size: 15px; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+    .run-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px 18px; transition: border-color 0.15s, transform 0.15s;
+      display: flex; flex-direction: column; gap: 10px; position: relative;
+    }
+    .run-card:hover { border-color: rgba(79,70,229,0.4); transform: translateY(-1px); }
+    .run-card.hidden { display: none; }
+
+    .run-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .run-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); word-break: break-all; }
+    .run-score { font-size: 24px; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--teal); line-height: 1; margin-top: 2px; }
+    .run-tags { display: flex; gap: 4px; flex-wrap: wrap; align-items: flex-start; }
+    .tag {
+      font-size: 9px; padding: 2px 7px; border-radius: 4px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+    }
+    .tag.phase-phase1     { background: rgba(124,109,250,0.15); color: var(--accent2); }
+    .tag.phase-phase2     { background: rgba(0,212,170,0.15);   color: var(--teal); }
+    .tag.phase-phase2_ai  { background: rgba(0,212,170,0.15);   color: var(--teal); }
+    .tag.phase-phase3     { background: rgba(245,158,11,0.15);  color: var(--yellow); }
+    .tag.phase-phase3_oos { background: rgba(245,158,11,0.15);  color: var(--yellow); }
+    .tag.phase-phase3_sens { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .tag.ai     { background: rgba(124,109,250,0.18); color: var(--accent2); }
+    .tag.set    { background: rgba(16,185,129,0.15); color: var(--green); }
+    .tag.no-set { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .m { background: rgba(255,255,255,0.03); border-radius: 6px; padding: 6px 8px; }
+    .m-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .m-val { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+    .green { color: var(--green); } .red { color: var(--red); } .gold { color: var(--yellow); } .teal { color: var(--teal); }
+
+    .actions {
+      display: flex; gap: 6px; margin-top: auto; padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .btn {
+      flex: 1; text-align: center; padding: 6px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none;
+      border: 1px solid transparent; font-family: inherit; transition: all 0.15s;
+      background: rgba(255,255,255,0.04); color: var(--text); border-color: var(--border);
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .btn:hover { background: rgba(255,255,255,0.08); }
+    .btn.primary { background: rgba(79,70,229,0.15); color: var(--accent2); border-color: rgba(79,70,229,0.32); }
+    .btn.primary:hover { background: rgba(79,70,229,0.28); }
+    .btn.success { background: rgba(16,185,129,0.12); color: var(--green); border-color: rgba(16,185,129,0.3); }
+    .btn.success:hover { background: rgba(16,185,129,0.22); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .run-ts { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Modal ──────────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+      display: none; align-items: center; justify-content: center;
+      z-index: 200; backdrop-filter: blur(5px); padding: 24px;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      width: 720px; max-width: 95vw; max-height: 88vh; display: flex; flex-direction: column;
+      overflow: hidden;
+      animation: pop 0.25s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @keyframes pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .modal-title { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; word-break: break-all; }
+    .modal-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .close-btn {
+      width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .close-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+    .modal-body { padding: 18px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+    .modal-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .params-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .params-table th { text-align: left; padding: 6px 8px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); }
+    .params-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .params-table .pn { color: var(--text); }
+    .params-table .pv { color: var(--teal); font-weight: 600; text-align: right; }
+    .ai-box { background: rgba(79,70,229,0.07); border: 1px solid rgba(79,70,229,0.22); border-radius: 8px; padding: 12px 14px; font-size: 12px; line-height: 1.6; }
+    .ai-box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent2); margin-bottom: 5px; }
+    .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; flex-wrap: wrap; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>📁 Optimization Reports</h1>
-      <div class="sub">{{ runs|length }} run(s) recorded · Click any card to open the full report</div>
+      <div class="sub">{{ runs|length }} run(s) on disk · click "View Params" or "Download .set" on any card</div>
     </div>
-    <a class="back-link" href="/dashboard">&#8592; Back to Dashboard</a>
+    <a class="back-link" href="/dashboard">&larr; Back to Dashboard</a>
   </header>
 
+  <!-- Toolbar: search + phase filters -->
+  <div class="toolbar">
+    <input type="text" class="search" id="search" placeholder="Filter by run id, phase, or score…">
+    <div class="filter-chip active" data-phase="all">All</div>
+    <div class="filter-chip" data-phase="phase1">Exploration</div>
+    <div class="filter-chip" data-phase="phase2">AI Iteration</div>
+    <div class="filter-chip" data-phase="phase3">Validation</div>
+    <div class="filter-chip" data-phase="ai">AI insight</div>
+    <div class="filter-chip" data-phase="set">Has .set</div>
+    <div class="toolbar-stats" id="visible-count">{{ runs|length }} visible</div>
+  </div>
+
   {% if not runs %}
-  <div class="empty">No reports yet.<br>Start the optimizer to generate your first run report.</div>
+  <div class="empty">No reports yet.<br>Start the optimizer to generate your first run.</div>
   {% else %}
-  <div class="cards">
+  <div class="cards" id="cards">
     {% for r in runs %}
-    <a class="run-card" href="/reports/{{ r.run_id }}/summary.html" target="_blank">
+    <div class="run-card"
+         data-run-id="{{ r.run_id }}"
+         data-phase="{{ r.phase }}"
+         data-has-ai="{{ r.has_ai|lower }}"
+         data-has-set="{{ r.has_set|lower }}"
+         data-search="{{ (r.run_id ~ ' ' ~ r.phase)|lower }}">
       <div class="run-header">
-        <div>
+        <div style="min-width:0;flex:1;">
           <div class="run-id">{{ r.run_id }}</div>
           <div class="run-score">{{ "%.4f"|format(r.score) }}</div>
         </div>
-        <span class="run-phase">{{ r.phase }}</span>
+        <div class="run-tags">
+          <span class="tag phase-{{ r.phase }}">{{ r.phase|replace('phase1','Explore')|replace('phase2_ai','AI iter')|replace('phase2','Iter')|replace('phase3_oos','OOS')|replace('phase3_sens','Sens')|replace('phase3','Validate') }}</span>
+          {% if r.has_ai %}<span class="tag ai" title="AI reasoning available">AI</span>{% endif %}
+          {% if r.has_set %}<span class="tag set" title=".set file ready">.set</span>{% endif %}
+        </div>
       </div>
-      <div class="metrics-row">
+      <div class="metrics">
         <div class="m">
           <div class="m-label">Net Profit</div>
-          <div class="m-val {% if r.net_profit >= 0 %}delta-up{% else %}delta-dn{% endif %}">
-            ${{ "%.0f"|format(r.net_profit) }}
-          </div>
-        </div>
-        <div class="m">
-          <div class="m-label">Calmar</div>
-          <div class="m-val">{{ "%.2f"|format(r.calmar) }}</div>
-        </div>
-        <div class="m">
-          <div class="m-label">Drawdown</div>
-          <div class="m-val delta-dn">{{ "%.1f"|format(r.drawdown_pct) }}%</div>
+          <div class="m-val {% if r.net_profit >= 0 %}green{% else %}red{% endif %}">${{ "%.0f"|format(r.net_profit) }}</div>
         </div>
         <div class="m">
           <div class="m-label">PF</div>
-          <div class="m-val">{{ "%.2f"|format(r.profit_factor) }}</div>
+          <div class="m-val gold">{{ "%.2f"|format(r.profit_factor) }}</div>
+        </div>
+        <div class="m">
+          <div class="m-label">Calmar</div>
+          <div class="m-val teal">{{ "%.2f"|format(r.calmar) }}</div>
+        </div>
+        <div class="m">
+          <div class="m-label">Max DD</div>
+          <div class="m-val red">{{ "%.1f"|format(r.drawdown_pct) }}%</div>
+        </div>
+        <div class="m">
+          <div class="m-label">Win %</div>
+          <div class="m-val">{{ "%.1f"|format(r.win_rate) }}%</div>
         </div>
         <div class="m">
           <div class="m-label">Trades</div>
           <div class="m-val">{{ r.total_trades }}</div>
         </div>
-        <div class="m">
-          <div class="m-label">Score Δ</div>
-          <div class="m-val {% if r.score_delta >= 0 %}delta-up{% else %}delta-dn{% endif %}">
-            {{ "%+.4f"|format(r.score_delta) }}
-          </div>
-        </div>
       </div>
       <div class="run-ts">{{ r.ts[:19].replace("T"," ") }} UTC</div>
-    </a>
+      <div class="actions">
+        <button class="btn primary" onclick="openDetail('{{ r.run_id }}')">View Params</button>
+        {% if r.has_set %}
+          <a class="btn success" href="/download_set/{{ r.run_id }}" download>⬇ .set</a>
+        {% else %}
+          <button class="btn" disabled title="No .set file generated for this run">No .set</button>
+        {% endif %}
+        <a class="btn" href="/reports/{{ r.run_id }}/summary.html" target="_blank">Full Report ↗</a>
+      </div>
+    </div>
     {% endfor %}
   </div>
   {% endif %}
+
+  <!-- ── Detail Modal (params + AI reasoning + .set) ─────────────── -->
+  <div class="overlay" id="overlay" onclick="if(event.target===this)closeDetail()">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="md-run-id">—</div>
+          <div class="modal-meta" id="md-meta"></div>
+        </div>
+        <button class="close-btn" onclick="closeDetail()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <div class="modal-section-title">Metrics</div>
+          <div class="metrics" id="md-metrics"></div>
+        </div>
+        <div>
+          <div class="modal-section-title">Parameters</div>
+          <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+            <table class="params-table"><thead><tr><th>Parameter</th><th style="text-align:right">Value</th></tr></thead><tbody id="md-params"></tbody></table>
+          </div>
+        </div>
+        <div id="md-ai-wrap" style="display:none;">
+          <div class="modal-section-title">AI Reasoning</div>
+          <div class="ai-box" id="md-ai"></div>
+        </div>
+      </div>
+      <div class="modal-footer" id="md-footer"></div>
+    </div>
+  </div>
+
+<script>
+function escHtml(s) {
+  const map = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' };
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => map[c]);
+}
+function fmtMoney(v) {
+  const n = parseFloat(v) || 0;
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  return sign + '$' + abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── Filtering ────────────────────────────────────────────────
+const cards = () => Array.from(document.querySelectorAll('.run-card'));
+let activeFilter = 'all';
+let activeSearch = '';
+
+function applyFilters() {
+  let visible = 0;
+  cards().forEach(c => {
+    const phase   = c.dataset.phase || '';
+    const hasAi   = c.dataset.hasAi  === 'true';
+    const hasSet  = c.dataset.hasSet === 'true';
+    const text    = c.dataset.search || '';
+    let phaseOk = true;
+    if (activeFilter === 'phase1')  phaseOk = phase === 'phase1';
+    else if (activeFilter === 'phase2') phaseOk = phase.startsWith('phase2');
+    else if (activeFilter === 'phase3') phaseOk = phase.startsWith('phase3');
+    else if (activeFilter === 'ai')   phaseOk = hasAi;
+    else if (activeFilter === 'set')  phaseOk = hasSet;
+    const searchOk = !activeSearch || text.includes(activeSearch);
+    const show = phaseOk && searchOk;
+    c.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+  const el = document.getElementById('visible-count');
+  if (el) el.textContent = visible + ' visible';
+}
+
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeFilter = chip.dataset.phase;
+    applyFilters();
+  });
+});
+document.getElementById('search').addEventListener('input', e => {
+  activeSearch = (e.target.value || '').toLowerCase().trim();
+  applyFilters();
+});
+
+// ── Detail modal ────────────────────────────────────────────
+async function openDetail(runId) {
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('md-run-id').textContent = runId;
+  document.getElementById('md-meta').textContent   = 'Loading…';
+  document.getElementById('md-metrics').innerHTML  = '';
+  document.getElementById('md-params').innerHTML   = '<tr><td colspan="2" style="color:var(--muted);text-align:center;padding:18px;">Loading…</td></tr>';
+  document.getElementById('md-ai-wrap').style.display = 'none';
+  document.getElementById('md-footer').innerHTML   = '<button class="btn" onclick="closeDetail()">Close</button>';
+
+  try {
+    const r = await fetch('/api/run/' + encodeURIComponent(runId));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+
+    document.getElementById('md-run-id').textContent = d.run_id || runId;
+    const ts = d.ts ? new Date(d.ts).toLocaleString() : '—';
+    const phase = (d.phase || '—').replace(/_/g, ' ');
+    document.getElementById('md-meta').textContent = phase + '  ·  ' + ts;
+
+    // Metrics
+    const profit = parseFloat(d.net_profit || 0);
+    const pf     = parseFloat(d.profit_factor || 0);
+    const dd     = parseFloat(d.drawdown_pct || d.max_drawdown || 0);
+    const cal    = parseFloat(d.calmar || 0);
+    const wr     = parseFloat(d.win_rate || 0);
+    const tr     = parseInt(d.total_trades || 0, 10);
+    const sc     = parseFloat(d.score || 0);
+    const cells = [
+      ['Net Profit', fmtMoney(profit), profit >= 0 ? 'green' : 'red'],
+      ['Profit Factor', pf.toFixed(2), 'gold'],
+      ['Calmar', cal.toFixed(2), 'teal'],
+      ['Max DD', dd.toFixed(1) + '%', 'red'],
+      ['Win Rate', wr.toFixed(1) + '%', ''],
+      ['Trades', tr.toLocaleString(), ''],
+    ];
+    document.getElementById('md-metrics').innerHTML = cells.map(([l,v,cl]) => `
+      <div class="m">
+        <div class="m-label">${escHtml(l)}</div>
+        <div class="m-val ${cl}">${escHtml(v)}</div>
+      </div>
+    `).join('');
+
+    // Params
+    const params = d.params || {};
+    const entries = Object.entries(params);
+    const tbody = document.getElementById('md-params');
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted);text-align:center;padding:18px;">No parameters recorded</td></tr>';
+    } else {
+      tbody.innerHTML = entries.map(([k, v]) => {
+        const display = typeof v === 'number'
+          ? (v % 1 !== 0 ? v.toFixed(4) : v)
+          : v;
+        return `<tr><td class="pn">${escHtml(k)}</td><td class="pv">${escHtml(display)}</td></tr>`;
+      }).join('');
+    }
+
+    // AI Reasoning
+    const ai = d.ai_insight;
+    if (ai) {
+      const wrap = document.getElementById('md-ai-wrap');
+      wrap.style.display = '';
+      const text = ai.headline || ai.diagnosis || ai.analysis || '';
+      let html = '';
+      if (text) html += '<div class="lbl">Diagnosis</div><div>' + escHtml(text) + '</div>';
+      const sugg = ai.suggestions || ai.changes || [];
+      if (sugg.length) {
+        html += '<div class="lbl" style="margin-top:10px;">Suggestions</div>';
+        html += '<ul style="padding-left:18px;margin:0;">';
+        sugg.slice(0, 5).forEach(s => {
+          if (typeof s === 'string') {
+            html += '<li>' + escHtml(s) + '</li>';
+          } else if (s && typeof s === 'object') {
+            const p = s.param || s.parameter || '';
+            const r = s.reason || '';
+            const v = s.value !== undefined ? s.value : (s.to !== undefined ? s.to : '');
+            html += '<li>' + (p ? '<code style="color:var(--teal)">' + escHtml(p) + '</code>' : '')
+                 + (v !== '' ? ' → <strong>' + escHtml(String(v)) + '</strong>' : '')
+                 + (r ? ' — ' + escHtml(r) : '') + '</li>';
+          }
+        });
+        html += '</ul>';
+      }
+      document.getElementById('md-ai').innerHTML = html || '<em style="color:var(--muted);">No reasoning recorded.</em>';
+    }
+
+    // Footer actions
+    let btns = '';
+    if (d.set_url || d.has_set) {
+      const url = d.set_url || ('/download_set/' + encodeURIComponent(d.run_id || runId));
+      btns += '<a class="btn success" href="' + url + '" download>⬇ Download .set</a>';
+    }
+    btns += '<a class="btn" href="/reports/' + encodeURIComponent(d.run_id || runId) + '/summary.html" target="_blank">Full Report ↗</a>';
+    btns += '<button class="btn" onclick="closeDetail()">Close</button>';
+    document.getElementById('md-footer').innerHTML = btns;
+
+  } catch (err) {
+    document.getElementById('md-meta').textContent = 'Error: ' + err.message;
+  }
+}
+function closeDetail() {
+  document.getElementById('overlay').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDetail();
+});
+</script>
 </body>
 </html>

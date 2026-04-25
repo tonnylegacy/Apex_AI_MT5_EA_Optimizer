@@ -186,21 +186,38 @@ def download_set(run_id):
 def reports_index():
     import json, re
     runs = []
-    for run_dir in sorted(REPORTS_DIR.iterdir(), reverse=True) if REPORTS_DIR.exists() else []:
-        if not run_dir.is_dir():
-            continue
-        summary = run_dir / "summary.json"
-        if summary.exists():
+    if REPORTS_DIR.exists():
+        for run_dir in REPORTS_DIR.iterdir():
+            if not run_dir.is_dir():
+                continue
+            summary = run_dir / "summary.json"
+            if not summary.exists():
+                continue
             try:
                 txt  = summary.read_text(encoding="utf-8")
                 txt  = re.sub(r'\bNaN\b', 'null', txt)
                 txt  = re.sub(r'\bInfinity\b', 'null', txt)
                 data = json.loads(txt)
-                data["score"]       = data.get("score") or 0
-                data["score_delta"] = data.get("score_delta") or 0
+                # Defensive defaults so the template never crashes on legacy files.
+                data["run_id"]        = data.get("run_id") or run_dir.name
+                data["score"]         = data.get("score") or 0
+                data["score_delta"]   = data.get("score_delta") or 0
+                data["net_profit"]    = data.get("net_profit") or 0
+                data["profit_factor"] = data.get("profit_factor") or 0
+                data["calmar"]        = data.get("calmar") or 0
+                data["drawdown_pct"]  = data.get("drawdown_pct") or 0
+                data["win_rate"]      = data.get("win_rate") or 0
+                data["total_trades"]  = data.get("total_trades") or 0
+                data["ts"]            = data.get("ts") or ""
+                data["phase"]         = data.get("phase") or "phase1"
+                # Surface per-card flags the template uses
+                data["has_set"]       = bool(list(run_dir.glob("*.set")))
+                data["has_ai"]        = (run_dir / "ai_insight.json").exists() or bool(data.get("has_ai"))
                 runs.append(data)
             except Exception:
                 pass
+    # Sort by ts desc — newest first (was relying on filesystem sort order before)
+    runs.sort(key=lambda r: r.get("ts", ""), reverse=True)
     return render_template("reports_index.html", runs=runs[:100])
 
 
@@ -270,6 +287,39 @@ def run_detail(run_id):
         "ai_insight": ai_insight,
         "set_url":    set_url,
         "has_set":    bool(set_files),
+    })
+
+
+@app.route("/api/live_activity")
+def live_activity():
+    """
+    Single endpoint the dashboard hits on (re)connect to restore everything
+    that's not already in /api/history: AI thinking feed, parameter changes,
+    validation runs, early-termination state, current phase + mode.
+    """
+    if not pipeline:
+        return jsonify({
+            "thinking": [], "param_changes": [], "validation": [],
+            "early_termination": None,
+            "phase": "idle", "phase_mode": None,
+            "running": False,
+        })
+
+    # Determine phase mode (autonomous?) for label hints
+    phase_mode = None
+    if getattr(pipeline, "session", None):
+        phase_mode = "autonomous" if getattr(pipeline.session, "autonomous_mode", False) else None
+
+    return jsonify({
+        "thinking":          getattr(pipeline, "_thinking_log",   []) or [],
+        "param_changes":     getattr(pipeline, "_param_changes",  []) or [],
+        "validation":        getattr(pipeline, "_validation_log", []) or [],
+        "early_termination": getattr(pipeline, "_early_term",     None),
+        "phase":             getattr(pipeline, "_phase",          "idle"),
+        "phase_mode":        phase_mode,
+        "running":           bool(getattr(pipeline, "running",    False)),
+        "run_count":         getattr(pipeline, "_run_count",      0),
+        "total_runs":        getattr(pipeline, "_total_runs",     0),
     })
 
 
