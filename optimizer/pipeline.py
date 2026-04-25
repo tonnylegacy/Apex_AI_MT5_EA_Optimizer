@@ -131,8 +131,8 @@ class OptimizationPipeline:
             "best_net_profit":    round(best.net_profit, 2) if best else None,
             "best_calmar":        round(best.calmar, 3) if best else None,
             "best_pf":            round(best.profit_factor, 3) if best else None,
-            "best_win_rate":      round(best.win_rate, 1) if best else None,
-            "best_max_drawdown":  round(best.max_drawdown, 2) if best else None,
+            "best_win_rate":      round(best.win_rate * 100, 1) if best else None,
+            "best_max_drawdown":  round(best.max_drawdown * 100, 2) if best else None,
             "best_total_trades":  best.total_trades if best else None,
         }
 
@@ -495,7 +495,7 @@ class OptimizationPipeline:
                 "net_profit":    round(oos_result.net_profit, 2),
                 "profit_factor": round(oos_result.profit_factor, 3),
                 "calmar":        round(oos_result.calmar, 3),
-                "max_drawdown":  round(oos_result.max_drawdown, 2),
+                "max_drawdown":  round(oos_result.max_drawdown * 100, 2),
                 "total_trades":  oos_result.total_trades,
                 "passing":       oos_result.passing,
             })
@@ -566,9 +566,9 @@ class OptimizationPipeline:
                         "net_profit":    round(sr.net_profit, 2),
                         "profit_factor": round(sr.profit_factor, 3),
                         "calmar":        round(sr.calmar, 3),
-                        "max_drawdown":  round(sr.max_drawdown, 2),
+                        "max_drawdown":  round(sr.max_drawdown * 100, 2),
                         "total_trades":  sr.total_trades,
-                        "passing":       sr.passing,
+                        "passing":       bool(sr.passing),
                     })
 
             # Determine verdict
@@ -603,8 +603,8 @@ class OptimizationPipeline:
             "net_profit":    round(self.final_result.net_profit, 2),
             "calmar":        round(self.final_result.calmar, 3),
             "profit_factor": round(self.final_result.profit_factor, 3),
-            "win_rate":      round(self.final_result.win_rate, 1),
-            "max_drawdown":  round(self.final_result.max_drawdown, 2),
+            "win_rate":      round(self.final_result.win_rate * 100, 1),
+            "max_drawdown":  round(self.final_result.max_drawdown * 100, 2),
             "total_trades":  self.final_result.total_trades,
             "oos_profit":    round(oos_result.net_profit, 2) if oos_result else None,
             "oos_calmar":    round(oos_result.calmar, 3) if oos_result else None,
@@ -863,7 +863,13 @@ class OptimizationPipeline:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _make_run_dict(self, run_id: str, result: RankedResult, phase: str) -> dict:
-        """Canonical run dict used for both _completed_runs and run_complete emits."""
+        """Canonical run dict used for both _completed_runs and run_complete emits.
+
+        IMPORTANT — unit convention: win_rate and max_drawdown are emitted as
+        PERCENTAGES (0–100), not fractions, so the dashboard can render them
+        directly with `${val}%`. RankedResult stores these as fractions so we
+        scale here at the API boundary.
+        """
         d = {
             "run_id":        run_id,
             "phase":         phase,
@@ -871,10 +877,10 @@ class OptimizationPipeline:
             "net_profit":    round(result.net_profit, 2),
             "calmar":        round(result.calmar, 3),
             "profit_factor": round(result.profit_factor, 3),
-            "win_rate":      round(result.win_rate, 1),
-            "max_drawdown":  round(result.max_drawdown, 2),
+            "win_rate":      round(result.win_rate * 100, 1),
+            "max_drawdown":  round(result.max_drawdown * 100, 2),
             "total_trades":  result.total_trades,
-            "passing":       result.passing,
+            "passing":       bool(result.passing),
             "score":         round(result.score, 4),
             "params":        result.params,
         }
@@ -891,10 +897,10 @@ class OptimizationPipeline:
             "net_profit":    round(r.net_profit, 2),
             "calmar":        round(r.calmar, 3),
             "profit_factor": round(r.profit_factor, 3),
-            "win_rate":      round(r.win_rate, 1),
-            "max_drawdown":  round(r.max_drawdown, 2),
+            "win_rate":      round(r.win_rate * 100, 1),     # fraction → %
+            "max_drawdown":  round(r.max_drawdown * 100, 2), # fraction → %
             "total_trades":  r.total_trades,
-            "passing":       r.passing,
+            "passing":       bool(r.passing),
             "params":        r.params,                     # full param dict
             "params_summary": self._params_summary(r.params),
         }

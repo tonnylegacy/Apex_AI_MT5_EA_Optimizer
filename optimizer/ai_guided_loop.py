@@ -142,7 +142,7 @@ class AIGuidedLoop:
                 self._emit("ai_targets_met", {
                     "iteration": iteration - 1,
                     "profit_factor": round(self.best_result.profit_factor, 3),
-                    "max_drawdown":  round(self.best_result.max_drawdown, 2),
+                    "max_drawdown":  round(self.best_result.max_drawdown * 100, 2),
                     "calmar":        round(self.best_result.calmar, 3),
                 })
                 self.pipeline._emit_early_termination(
@@ -151,7 +151,7 @@ class AIGuidedLoop:
                     details={
                         "iteration":     iteration - 1,
                         "profit_factor": round(self.best_result.profit_factor, 3),
-                        "max_drawdown":  round(self.best_result.max_drawdown, 2),
+                        "max_drawdown":  round(self.best_result.max_drawdown * 100, 2),
                         "calmar":        round(self.best_result.calmar, 3),
                     },
                 )
@@ -298,7 +298,7 @@ class AIGuidedLoop:
                     kind="warning", iteration=iteration,
                 )
 
-            # Emit iteration complete
+            # Emit iteration complete (max_drawdown emitted as %)
             self._emit("ai_iteration_complete", {
                 "iteration":       iteration,
                 "max_iterations":  max_iterations,
@@ -306,10 +306,10 @@ class AIGuidedLoop:
                 "score":           round(result.score, 4),
                 "profit_factor":   round(result.profit_factor, 3),
                 "calmar":          round(result.calmar, 3),
-                "max_drawdown":    round(result.max_drawdown, 2),
+                "max_drawdown":    round(result.max_drawdown * 100, 2),
                 "net_profit":      round(result.net_profit, 2),
                 "total_trades":    result.total_trades,
-                "passing":         result.passing,
+                "passing":         bool(result.passing),
                 "best_score":      round(self.best_result.score, 4) if self.best_result else 0,
                 "best_pf":         round(self.best_result.profit_factor, 3) if self.best_result else 0,
                 "best_calmar":     round(self.best_result.calmar, 3) if self.best_result else 0,
@@ -327,10 +327,10 @@ class AIGuidedLoop:
                 "net_profit":    round(result.net_profit, 2),
                 "calmar":        round(result.calmar, 3),
                 "profit_factor": round(result.profit_factor, 3),
-                "win_rate":      round(result.win_rate, 1),
-                "max_drawdown":  round(result.max_drawdown, 2),
+                "win_rate":      round(result.win_rate * 100, 1),
+                "max_drawdown":  round(result.max_drawdown * 100, 2),
                 "total_trades":  result.total_trades,
-                "passing":       result.passing,
+                "passing":       bool(result.passing),
                 "score":         round(result.score, 4),
                 "progress_pct":  round(self.pipeline._run_count / max(self.pipeline._total_runs, 1) * 100),
             })

@@ -320,10 +320,11 @@ def best_result():
         "net_profit":     round(best_run.net_profit, 2),
         "profit_factor":  round(best_run.profit_factor, 3),
         "calmar":         round(best_run.calmar, 3),
-        "max_drawdown":   round(best_run.max_drawdown, 2),
-        "win_rate":       round(best_run.win_rate, 1),
+        # max_drawdown + win_rate are stored as fractions on RankedResult; emit as %
+        "max_drawdown":   round(best_run.max_drawdown * 100, 2),
+        "win_rate":       round(best_run.win_rate * 100, 1),
         "total_trades":   best_run.total_trades,
-        "passing":        best_run.passing,
+        "passing":        bool(best_run.passing),
         "phase":          getattr(best_run, "phase", "phase2_ai"),
         "params":         best_run.params,
         "evolution":      evolution,
@@ -357,9 +358,21 @@ def ai_insights_all():
     return jsonify([])
 
 
+def _mask_key(k: str) -> str:
+    """Mask an API key so the GET response never exposes the secret."""
+    if not k:
+        return ""
+    if k.startswith("${") or k in ("YOUR_API_KEY", "sk-ant-..."):
+        return ""           # placeholder — return empty so the field shows blank
+    if len(k) <= 12:
+        return "***"
+    return k[:8] + "…" + k[-4:]
+
+
 @app.route("/api/settings", methods=["GET"])
 def get_settings():
     import yaml
+    import os
     config_path = BASE_DIR / "config.yaml"
     try:
         with open(config_path, encoding="utf-8") as f:
@@ -368,10 +381,15 @@ def get_settings():
         mt5_cfg = cfg.get("mt5", {})
         broker_cfg = cfg.get("broker", {})
         thresh_cfg = cfg.get("thresholds", {})
+        # Resolve the active API key — placeholder in config falls back to env var.
+        raw_key = ai_cfg.get("anthropic_api_key", "")
+        if not raw_key or raw_key.startswith("${"):
+            raw_key = os.environ.get("ANTHROPIC_API_KEY", "")
         return jsonify({
             "ai": {
                 "enabled":          ai_cfg.get("enabled", True),
-                "anthropic_api_key": ai_cfg.get("anthropic_api_key", ""),
+                "anthropic_api_key": _mask_key(raw_key),
+                "anthropic_api_key_set": bool(raw_key),
                 "model":            ai_cfg.get("model", "claude-opus-4-7"),
                 "timeout_seconds":  ai_cfg.get("timeout_seconds", 30),
             },
@@ -411,10 +429,25 @@ def save_settings():
             if section in data and isinstance(data[section], dict):
                 if section not in cfg:
                     cfg[section] = {}
+                # Don't overwrite the real API key with the masked one we sent
+                # the client. We accept a key only if it's empty (clearing) or
+                # looks like a full key (sk-ant-… with no mask markers and at
+                # least 30 chars). Anything ambiguous → preserve the existing.
+                if section == "ai":
+                    incoming_key = data["ai"].get("anthropic_api_key", "")
+                    if incoming_key:
+                        looks_masked = (
+                            "…" in incoming_key
+                            or "..." in incoming_key
+                            or "***" in incoming_key
+                            or len(incoming_key) < 30
+                        )
+                        if looks_masked:
+                            data["ai"].pop("anthropic_api_key", None)
                 cfg[section].update(data[section])
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "note": "Settings saved. Will apply on the next optimization run."})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

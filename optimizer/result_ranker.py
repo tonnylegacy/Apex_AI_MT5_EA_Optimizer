@@ -165,7 +165,7 @@ class ResultRanker:
                 run_id=run_id, params=params, phase=phase,
                 error=error or "run_failed",
             )
-        return RankedResult(
+        result = RankedResult(
             run_id        = run_id,
             params        = params,
             phase         = phase,
@@ -176,3 +176,8 @@ class ResultRanker:
             max_drawdown  = getattr(metrics, "max_drawdown_pct", 0.0) or 0.0,
             total_trades  = getattr(metrics, "total_trades", 0) or 0,
         )
+        # Set passing + raw_score now so single-run dispatchers (Phase 2 AI loop,
+        # validation runs) get correct values without waiting for a full rank() pass.
+        result.passing   = self._is_passing(result)
+        result.raw_score = self._raw_score(result) if result.passing else 0.0
+        return result
