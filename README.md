@@ -117,16 +117,30 @@ hit **Start**, and watch the AI think.
 
 ### Demo mode (no MT5 required)
 
-Don't have MT5 installed? Run the offline demo that feeds synthetic backtest results
-through the same AI loop and dashboard:
+Don't have MT5 installed? The offline demo feeds synthetic backtest results
+through the same AI loop and dashboard. **It auto-starts** — open the link
+the script prints, sit back, and watch APEX think:
 
 ```bash
 python -m demo.run_demo
 ```
 
-This is the path to use if you're a hackathon judge — you'll see the full thinking feed,
-parameter‑change panel, validation phase, and verdict screen without needing a Windows
-machine with MT5.
+That's it. The browser opens to the live dashboard, an optimization kicks off
+automatically, and you'll see all three phases play out over ~3-4 minutes:
+exploration → AI iteration with reasoning streaming live → out-of-sample +
+sensitivity validation → final verdict. Every panel populates so you can see
+exactly what the system does.
+
+If you'd rather drive it yourself (configure your own EA, dates, targets), use:
+
+```bash
+python -m demo.run_demo --quick    # boots the server, you click "New Run"
+python -m demo.run_demo --loop     # auto-restart between runs (unattended recording)
+```
+
+This is the path to use if you're a hackathon judge — you'll see the full
+thinking feed, parameter-change panel, validation phase, and verdict screen
+without needing a Windows machine with MT5.
 
 ---
 

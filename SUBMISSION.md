@@ -81,8 +81,9 @@ https://github.com/tonnylegacy/MT5_Optimizer
 No hosted demo (the app runs locally to drive a local MT5 install). For judges:
 
 - **Static**: open `screenshots/apex_demo.gif` in the repo (6‑frame timelapse of one autonomous run)
-- **Run it**: `git clone … && pip install -r requirements.txt && python -m demo.run_demo` → opens at `http://localhost:5000` with synthetic backtests, no MT5 required
-- **With API key**: set `ANTHROPIC_API_KEY` env var to see live Claude reasoning stream into the Thinking Feed
+- **Run it**: `git clone … && pip install -r requirements.txt && python -m demo.run_demo` → the browser opens to the dashboard, a ~3-4 minute optimization auto-starts, and every phase (exploration → AI iteration → validation → verdict) plays out without you touching anything
+- **With API key**: set `ANTHROPIC_API_KEY` env var (or fill `ai.anthropic_api_key` in `config.yaml`) to see live Claude reasoning stream into the Thinking Feed
+- **Faster / your-own-config**: `python -m demo.run_demo --quick` to skip the auto-run and drive the demo from `/setup` yourself
 
 ---
 
