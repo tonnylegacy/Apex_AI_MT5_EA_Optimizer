@@ -120,3 +120,13 @@ paths:
 logging:
   level: INFO
   file:  optimizer.log
+
+# ── Notifications (optional) ───────────────────────────────────────────────
+# When set, APEX POSTs a JSON summary to this URL when an optimization
+# completes — works with Discord webhooks, Slack incoming webhooks, or any
+# endpoint that accepts JSON. Leave empty to disable.
+notifications:
+  webhook_url: ""
+  # Style preset that shapes the JSON body. Auto-detected from URL host if
+  # left as 'auto'. Options: auto | discord | slack | generic
+  webhook_style: auto

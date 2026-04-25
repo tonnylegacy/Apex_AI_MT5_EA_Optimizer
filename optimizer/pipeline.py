@@ -108,6 +108,58 @@ class OptimizationPipeline:
     def configure(self, session: SessionConfig) -> None:
         self.session = session
 
+    def reload_config(self) -> dict:
+        """
+        Re-read config.yaml and apply runtime-mutable changes to the live
+        pipeline. Called from the Settings save handler so users can tune
+        AI model / timeout / thresholds mid-run without restarting.
+
+        Returns a dict of what actually changed, for the API response.
+        """
+        try:
+            with open(self.config_path, encoding="utf-8") as f:
+                new_cfg = yaml.safe_load(f) or {}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+        changed = {}
+        # AI settings — model, timeout, enabled — applied to the live reasoner
+        old_ai = self.cfg.get("ai", {})
+        new_ai = new_cfg.get("ai", {})
+        if self._ai_reasoner is not None:
+            for fld in ("model", "timeout_seconds", "enabled"):
+                if old_ai.get(fld) != new_ai.get(fld):
+                    changed[f"ai.{fld}"] = new_ai.get(fld)
+            # Apply to live reasoner
+            try:
+                if "model" in new_ai and new_ai["model"]:
+                    self._ai_reasoner.MODEL = new_ai["model"]
+                if "timeout_seconds" in new_ai:
+                    self._ai_reasoner.TIMEOUT = int(new_ai["timeout_seconds"])
+                # API key swap: if a new full key was saved, rebuild reasoner
+                old_key = (old_ai.get("anthropic_api_key") or "").strip()
+                new_key = (new_ai.get("anthropic_api_key") or "").strip()
+                if new_key and new_key != old_key and not new_key.startswith("${") and len(new_key) >= 30:
+                    self._ai_reasoner = AIReasoner(api_key=new_key)
+                    changed["ai.api_key"] = "rotated"
+            except Exception as e:
+                logger.warning(f"reload_config: AI hot-reload failed: {e}")
+
+        # Threshold changes — applied to ResultRanker on next make_result.
+        # The thresholds module reads from config at import; we surface the
+        # change so the UI can confirm.
+        old_thr = self.cfg.get("thresholds", {})
+        new_thr = new_cfg.get("thresholds", {})
+        for fld in ("min_trades", "min_profit_factor", "min_calmar"):
+            if old_thr.get(fld) != new_thr.get(fld):
+                changed[f"thresholds.{fld}"] = new_thr.get(fld)
+
+        self.cfg = new_cfg
+        if changed:
+            self._log("info", f"⚙ Settings hot-reloaded: {', '.join(changed.keys())}")
+            self._emit("settings_reloaded", {"changed": changed})
+        return {"ok": True, "changed": changed}
+
     def stop(self) -> None:
         self._stop_flag = True
         self._emit("status_change", {"state": "stopping"})
@@ -191,6 +243,12 @@ class OptimizationPipeline:
         # Initialize AI reasoning layer
         api_key = load_api_key(self.config_path)
         self._ai_reasoner = AIReasoner(api_key=api_key)
+        # Stream Claude's reasoning tokens to the dashboard as they arrive.
+        # The Live AI Thinking Feed listens for `ai_thinking_chunk` events.
+        try:
+            self._ai_reasoner.set_stream_callback(self._stream_ai_chunk)
+        except Exception:
+            pass
         self._ai_insights.clear()
         self._run_findings.clear()
         self._run_insights.clear()
@@ -608,7 +666,7 @@ class OptimizationPipeline:
         self.best_set_path = self._write_set_file(self.final_result, schema, cfg)
 
         # ── Final emit ───────────────────────────────────────────────────────
-        self._emit("optimization_complete", {
+        completion_payload = {
             "verdict":       self.verdict,
             "best_run_id":   self.final_result.run_id,
             "score":         round(self.final_result.score, 4),
@@ -623,7 +681,8 @@ class OptimizationPipeline:
             "set_file_url":  f"/download_set/{self.final_result.run_id}" if self.best_set_path else None,
             "total_runs":    self._run_count,
             "elapsed_min":   round((time.time() - self.run_start_ts) / 60, 1),
-        })
+        }
+        self._emit("optimization_complete", completion_payload)
 
         verdict_icon = {"RECOMMENDED": "✅", "RISKY": "⚠️", "NOT_RELIABLE": "❌"}.get(self.verdict, "?")
         self._log("success" if self.verdict == "RECOMMENDED" else "warning",
@@ -631,6 +690,12 @@ class OptimizationPipeline:
             f"Profit: ${self.final_result.net_profit:.0f} | "
             f"Calmar: {self.final_result.calmar:.2f}"
         )
+
+        # ── Webhook notification (Discord / Slack / generic) ─────────────────
+        try:
+            self._send_completion_webhook(completion_payload)
+        except Exception as e:
+            logger.debug(f"Webhook notification failed: {e}")
 
     # ── Single run executor ───────────────────────────────────────────────────
 
@@ -756,6 +821,24 @@ class OptimizationPipeline:
         true_score *= rng.uniform(0.90, 1.10)
         true_score = max(0.05, min(0.99, true_score))
 
+        # ── Regime failure ────────────────────────────────────────────────
+        # Real backtests produce occasional duds — bad luck on a market regime
+        # the parameters can't handle, or curve-fit overfit blowing up. Inject
+        # those so the verdict isn't always RECOMMENDED. Probability is higher
+        # in Phase 1 (pure exploration) and lower in Phase 2 (AI is improving).
+        regime_fail_prob = {
+            "phase1":      0.35,   # 1 in 3 LHS samples lands in a bad spot
+            "phase2_ai":   0.10,   # AI is improving, occasional misstep
+            "phase2":      0.20,   # random neighbor search
+            "phase3_oos":  0.25,   # the market the params never saw — sometimes brutal
+            "phase3_sens": 0.15,   # nudged param → small chance of falling off the cliff
+        }.get(phase, 0.15)
+
+        regime_failed = rng.random() < regime_fail_prob
+        if regime_failed:
+            # Crush true_score so PF dives below 1, DD blows out, profit goes negative
+            true_score *= rng.uniform(0.10, 0.35)
+
         # Project onto realistic metric ranges
         profit_factor = round(0.7 + true_score * 1.8, 3)        # 0.7–2.5
         calmar        = round(true_score * 1.4, 3)              # 0.0–1.4
@@ -764,11 +847,18 @@ class OptimizationPipeline:
         total_trades  = int(80 + rng.random() * 220)            # 80–300
         net_profit    = round((profit_factor - 1) * 5000 * (1 + rng.uniform(-0.2, 0.2)), 2)
 
-        # Out-of-sample tends to be slightly worse (more realistic)
+        # Out-of-sample is ALWAYS at least somewhat worse (reality bias).
+        # Roughly 30% of OOS runs degrade significantly (>40%) — that's what
+        # produces RISKY / NOT_RELIABLE verdicts in production.
         if phase.startswith("phase3_oos"):
-            profit_factor *= 0.85
-            calmar        *= 0.80
-            net_profit    *= 0.75
+            severe = rng.random() < 0.30
+            shrink = rng.uniform(0.35, 0.55) if severe else rng.uniform(0.75, 0.92)
+            profit_factor *= shrink
+            calmar        *= shrink
+            net_profit    *= shrink
+            if severe:
+                # Severe OOS failures also widen drawdown
+                max_drawdown = min(45.0, max_drawdown * rng.uniform(1.3, 1.8))
 
         avg_trade = net_profit / max(total_trades, 1)
         winners = int(total_trades * (win_rate / 100.0))
@@ -1051,6 +1141,69 @@ class OptimizationPipeline:
             payload["details"] = details
         self._early_term = payload  # remember for refresh
         self._emit("early_termination", payload)
+
+    def _stream_ai_chunk(self, evt: dict) -> None:
+        """
+        Receive an event from AIReasoner streaming and forward to the
+        dashboard. Events: {event: 'start'|'delta'|'end'|'error', text?, error?}.
+        The frontend appends deltas to a single growing thinking-feed bubble.
+        """
+        try:
+            self._emit("ai_thinking_chunk", {
+                "event":     evt.get("event"),
+                "text":      evt.get("text", ""),
+                "error":     evt.get("error", ""),
+                "phase":     self._phase,
+                "ts":        datetime.utcnow().isoformat(),
+            })
+        except Exception:
+            pass
+
+    def _send_completion_webhook(self, payload: dict) -> None:
+        """
+        POST a completion summary to a user-configured webhook URL. Supports
+        Discord and Slack styles natively; everything else gets the raw JSON.
+        Silent no-op if no URL is configured.
+        """
+        notif = (self.cfg or {}).get("notifications", {}) or {}
+        url = (notif.get("webhook_url") or "").strip()
+        if not url:
+            return
+
+        verdict_emoji = {"RECOMMENDED": "✅", "RISKY": "⚠️", "NOT_RELIABLE": "❌"}.get(payload.get("verdict"), "📊")
+        title = f"{verdict_emoji} APEX optimization {payload.get('verdict','complete')}"
+        line = (
+            f"Best run **{payload.get('best_run_id','?')}** "
+            f"— PF {payload.get('profit_factor', 0):.2f} · "
+            f"Calmar {payload.get('calmar', 0):.2f} · "
+            f"DD {payload.get('max_drawdown', 0):.1f}% · "
+            f"Profit ${payload.get('net_profit', 0):,.0f} · "
+            f"{payload.get('total_trades', 0)} trades · "
+            f"{payload.get('elapsed_min', 0)} min"
+        )
+
+        # Detect style
+        style = (notif.get("webhook_style") or "auto").lower()
+        if style == "auto":
+            if "discord.com" in url or "discordapp.com" in url:
+                style = "discord"
+            elif "slack.com" in url or "hooks.slack" in url:
+                style = "slack"
+            else:
+                style = "generic"
+
+        try:
+            import requests
+            if style == "discord":
+                body = {"content": f"**{title}**\n{line}"}
+            elif style == "slack":
+                body = {"text": f"*{title}*\n{line}"}
+            else:
+                body = {"title": title, "summary": line, **payload}
+            requests.post(url, json=body, timeout=5)
+            self._log("info", f"📨 Webhook ({style}) notified.")
+        except Exception as e:
+            logger.warning(f"Webhook POST failed: {e}")
 
     def _emit(self, event: str, data: dict = {}) -> None:
         # Tee select live-activity events into in-memory logs so a dashboard

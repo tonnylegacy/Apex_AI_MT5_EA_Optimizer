@@ -290,6 +290,102 @@ def run_detail(run_id):
     })
 
 
+@app.route("/api/preflight")
+def preflight():
+    """
+    Run a checklist of "is this run going to work?" probes BEFORE the user
+    clicks Start. Returns {"ok": bool, "checks": [{name, ok, hint}]}.
+    """
+    import yaml as _yaml
+    import os as _os
+    from pathlib import Path as _P
+
+    checks = []
+
+    # 1. config.yaml exists + readable
+    cfg_path = BASE_DIR / "config.yaml"
+    cfg = {}
+    try:
+        cfg = _yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        checks.append({"name": "Config file readable", "ok": True, "hint": ""})
+    except Exception as e:
+        checks.append({"name": "Config file readable", "ok": False, "hint": str(e)})
+
+    # 2. Anthropic API key present (env or config)
+    raw_key = (cfg.get("ai", {}) or {}).get("anthropic_api_key", "") or ""
+    if not raw_key or raw_key.startswith("${"):
+        raw_key = _os.environ.get("ANTHROPIC_API_KEY", "")
+    has_key = bool(raw_key) and len(raw_key) >= 30 and raw_key.startswith("sk-")
+    checks.append({
+        "name": "Anthropic API key configured",
+        "ok": has_key,
+        "hint": "Optional in demo mode. For live AI insights, set ANTHROPIC_API_KEY or paste in Settings → AI Engine.",
+    })
+
+    # 3. Demo mode? short-circuit MT5 checks if so
+    demo = _os.environ.get("APEX_DEMO_MODE", "").strip() in ("1", "true", "yes")
+    if demo:
+        checks.append({"name": "Demo mode active (MT5 not required)", "ok": True, "hint": "Synthetic backtest results."})
+    else:
+        # 4. MT5 terminal exe exists
+        exe = (cfg.get("mt5", {}) or {}).get("terminal_exe", "")
+        exe_ok = bool(exe) and _P(exe).exists()
+        checks.append({
+            "name": "MT5 terminal found",
+            "ok": exe_ok,
+            "hint": "" if exe_ok else f"Set mt5.terminal_exe in Settings → MetaTrader 5. Looked at: {exe or '(empty)'}",
+        })
+        # 5. MQL5 Files path writable
+        mql5 = (cfg.get("mt5", {}) or {}).get("mql5_files_path", "")
+        mql5_ok = bool(mql5) and _P(mql5).exists()
+        checks.append({
+            "name": "MT5 Files folder reachable",
+            "ok": mql5_ok,
+            "hint": "" if mql5_ok else f"Set mt5.mql5_files_path. Looked at: {mql5 or '(empty)'}",
+        })
+
+    # 6. At least one EA registered
+    try:
+        from ea.registry import EARegistry
+        reg = EARegistry(str(cfg_path))
+        ea_count = len(getattr(reg, "_profiles", reg.list() if hasattr(reg, "list") else []))
+        if ea_count == 0:
+            try:
+                ea_count = len(reg.list())
+            except Exception:
+                pass
+        checks.append({
+            "name": "At least one EA registered",
+            "ok": ea_count > 0,
+            "hint": "" if ea_count > 0 else "Register an EA on the Setup page or via /api/ea/register.",
+        })
+    except Exception as e:
+        checks.append({"name": "EA registry loadable", "ok": False, "hint": str(e)})
+
+    # 7. Reports dir writable
+    try:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        probe = REPORTS_DIR / ".write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        checks.append({"name": "Reports folder writable", "ok": True, "hint": ""})
+    except Exception as e:
+        checks.append({"name": "Reports folder writable", "ok": False, "hint": str(e)})
+
+    # AI key not strictly required — only blocks if user explicitly enabled AI
+    ai_required = bool((cfg.get("ai", {}) or {}).get("enabled", True))
+    blocking = [c for c in checks if not c["ok"] and not (c["name"] == "Anthropic API key configured" and not ai_required)]
+    # API key is informational only
+    blocking = [c for c in blocking if c["name"] != "Anthropic API key configured"]
+
+    return jsonify({
+        "ok": len(blocking) == 0,
+        "blocking_count": len(blocking),
+        "checks": checks,
+        "demo_mode": demo,
+    })
+
+
 @app.route("/api/live_activity")
 def live_activity():
     """
@@ -497,7 +593,19 @@ def save_settings():
                 cfg[section].update(data[section])
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-        return jsonify({"ok": True, "note": "Settings saved. Will apply on the next optimization run."})
+        # Hot-reload into a running pipeline if there is one
+        reload_info = {}
+        if pipeline and pipeline.running:
+            try:
+                reload_info = pipeline.reload_config() or {}
+            except Exception as e:
+                reload_info = {"ok": False, "error": str(e)}
+        note = (
+            "Settings saved. Hot-reloaded into the running optimization."
+            if reload_info.get("changed")
+            else "Settings saved. Will apply on the next optimization run."
+        )
+        return jsonify({"ok": True, "note": note, "reload": reload_info})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

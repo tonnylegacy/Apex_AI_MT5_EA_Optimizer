@@ -223,6 +223,28 @@
   <form id="setup-form" novalidate>
 
     <!-- EA Identity -->
+    <!-- ── Pre-flight check ─────────────────────────────────────── -->
+    <div class="section" id="preflight-section" style="margin-bottom:14px;">
+      <div class="section-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+        Pre-flight check
+        <span id="preflight-status" style="margin-left:auto;font-size:0.78rem;color:#64748b;font-weight:500;">running…</span>
+      </div>
+      <div id="preflight-list" style="display:flex;flex-direction:column;gap:6px;font-size:0.82rem;"></div>
+    </div>
+    <style>
+      .pf-row { display:flex; align-items:flex-start; gap:8px; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); }
+      .pf-row.ok   { border-color: rgba(16,185,129,0.3); }
+      .pf-row.warn { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.05); }
+      .pf-row.err  { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.05); }
+      .pf-mark { width:14px; flex-shrink:0; font-weight:700; }
+      .pf-row.ok   .pf-mark { color:#10b981; }
+      .pf-row.warn .pf-mark { color:#f59e0b; }
+      .pf-row.err  .pf-mark { color:#ef4444; }
+      .pf-name { font-weight:600; color:#e2e8f0; }
+      .pf-hint { display:block; font-size:0.72rem; color:#94a3b8; margin-top:2px; line-height:1.4; }
+    </style>
+
     <div class="section">
       <div class="section-title">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/></svg>
@@ -734,6 +756,39 @@
   document.getElementById('ea_name').addEventListener('change', function() {
     loadEAParams(this.value);
   });
+
+  // ── Pre-flight check ──────────────────────────────────────────
+  async function runPreflight() {
+    const list = document.getElementById('preflight-list');
+    const status = document.getElementById('preflight-status');
+    if (!list) return;
+    try {
+      const r = await fetch('/api/preflight');
+      const d = await r.json();
+      const blocking = d.blocking_count || 0;
+      status.textContent = blocking === 0 ? (d.demo_mode ? 'demo mode · ready' : 'all clear · ready') : `${blocking} issue${blocking > 1 ? 's' : ''} to fix`;
+      status.style.color = blocking === 0 ? '#10b981' : '#ef4444';
+      list.innerHTML = (d.checks || []).map(c => {
+        let cls = 'ok', mark = '✓';
+        if (!c.ok) {
+          // API key is informational, not blocking
+          if (c.name && c.name.toLowerCase().includes('api key')) { cls = 'warn'; mark = '!'; }
+          else { cls = 'err'; mark = '✗'; }
+        }
+        return `<div class="pf-row ${cls}">
+          <div class="pf-mark">${mark}</div>
+          <div><div class="pf-name">${c.name || ''}</div>${c.hint ? `<span class="pf-hint">${c.hint}</span>` : ''}</div>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      status.textContent = 'preflight failed';
+      status.style.color = '#ef4444';
+      list.innerHTML = `<div class="pf-row err"><div class="pf-mark">✗</div><div><div class="pf-name">Could not reach /api/preflight</div><span class="pf-hint">${e.message}</span></div></div>`;
+    }
+  }
+  runPreflight();
+  // Re-run preflight when user adds an EA so the "EA registered" check refreshes
+  window.addEventListener('focus', runPreflight);
 
   function toggleAutonomous(btn) {
     const isOn = btn.style.background === 'rgb(79, 70, 229)' || btn.classList.contains('on');

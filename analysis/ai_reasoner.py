@@ -205,31 +205,75 @@ Be direct and technical. The user is an experienced forex trader. Max 2-3 sugges
     # ── API call ──────────────────────────────────────────────────────────────
 
     def _call_claude(self, prompt: str) -> str:
+        """
+        Call Claude. If a token-stream callback was registered via
+        `set_stream_callback`, use the SSE streaming endpoint and forward each
+        text delta via the callback so the dashboard can render the AI's
+        reasoning as it types.
+        """
         headers = {
             "Content-Type":    "application/json",
             "x-api-key":       self.api_key,
             "anthropic-version": "2023-06-01",
         }
+        stream_cb = getattr(self, "_stream_cb", None)
+
+        if stream_cb is None:
+            # ── Non-streaming path (used when no UI is attached) ──
+            body = {
+                "model":      self.MODEL,
+                "max_tokens": 1024,
+                "messages":   [{"role": "user", "content": prompt}],
+            }
+            resp = requests.post(self.API_URL, headers=headers, json=body, timeout=self.TIMEOUT)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Claude API returned {resp.status_code}: {resp.text[:300]}")
+            return resp.json()["content"][0]["text"]
+
+        # ── Streaming path: parses SSE events, accumulates text, fires callback per delta ──
         body = {
             "model":      self.MODEL,
             "max_tokens": 1024,
+            "stream":     True,
             "messages":   [{"role": "user", "content": prompt}],
         }
+        try:
+            stream_cb({"event": "start"})
+            with requests.post(self.API_URL, headers=headers, json=body, timeout=self.TIMEOUT, stream=True) as resp:
+                if resp.status_code != 200:
+                    raise RuntimeError(f"Claude API returned {resp.status_code}: {resp.text[:300]}")
+                full_text = []
+                for raw in resp.iter_lines(decode_unicode=True):
+                    if not raw or not raw.startswith("data:"):
+                        continue
+                    payload = raw[5:].strip()
+                    if not payload or payload == "[DONE]":
+                        continue
+                    try:
+                        evt = json.loads(payload)
+                    except Exception:
+                        continue
+                    if evt.get("type") == "content_block_delta":
+                        delta = (evt.get("delta") or {}).get("text") or ""
+                        if delta:
+                            full_text.append(delta)
+                            try:
+                                stream_cb({"event": "delta", "text": delta})
+                            except Exception:
+                                pass
+                    elif evt.get("type") == "message_stop":
+                        break
+                stream_cb({"event": "end"})
+                return "".join(full_text)
+        except Exception as e:
+            try: stream_cb({"event": "error", "error": str(e)})
+            except Exception: pass
+            raise
 
-        resp = requests.post(
-            self.API_URL,
-            headers=headers,
-            json=body,
-            timeout=self.TIMEOUT,
-        )
-
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"Claude API returned {resp.status_code}: {resp.text[:300]}"
-            )
-
-        data = resp.json()
-        return data["content"][0]["text"]
+    def set_stream_callback(self, cb) -> None:
+        """Register a callback `cb(event_dict)` that receives token deltas
+        during streaming Claude calls. Pass None to disable streaming."""
+        self._stream_cb = cb
 
     # ── Response parser ───────────────────────────────────────────────────────
 

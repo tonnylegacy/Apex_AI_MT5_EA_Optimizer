@@ -23,13 +23,13 @@ Calmar targets you set. Every reasoning step streams live to a dashboard.
 
 ## Demo
 
-![Dashboard](screenshots/dashboard.png)
+![APEX in action](screenshots/apex_demo.gif)
 
-The dashboard shows three live phases — **Exploration → Iteration → Validation** — with the
-AI's reasoning streaming on the right, parameter changes per iteration in the centre, and an
-out‑of‑sample/sensitivity validation panel that updates as MT5 finishes each test.
+> *6‑frame timelapse of one autonomous run — Phase 1 exploration → Phase 2 AI iteration → Phase 3 validation → verdict. Every backtest, every parameter change, and every line of AI reasoning streams live.*
 
-Other views: [setup wizard](screenshots/setup.png) · [settings modal](screenshots/settings_modal.png)
+A static high‑res view is at [`screenshots/dashboard.png`](screenshots/dashboard.png). The dashboard shows three live phases — **Exploration → Iteration → Validation** — with the AI's reasoning streaming on the right, parameter changes per iteration in the centre, and an out‑of‑sample/sensitivity validation panel that updates as MT5 finishes each test.
+
+Other views: [setup wizard](screenshots/setup.png) · [settings modal](screenshots/settings_modal.png) · [best‑result modal with evolution path](screenshots/best_result_modal.png)
 
 ---
 

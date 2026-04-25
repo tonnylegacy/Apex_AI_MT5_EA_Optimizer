@@ -129,6 +129,45 @@
     .ai-box { background: rgba(79,70,229,0.07); border: 1px solid rgba(79,70,229,0.22); border-radius: 8px; padding: 12px 14px; font-size: 12px; line-height: 1.6; }
     .ai-box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent2); margin-bottom: 5px; }
     .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; flex-wrap: wrap; }
+
+    /* Compare-runs UI */
+    .cmp-checkbox {
+      position: absolute; top: 10px; right: 10px;
+      width: 20px; height: 20px;
+      border-radius: 5px; border: 1.5px solid var(--border);
+      background: rgba(0,0,0,0.4); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: transparent;
+      transition: all 0.15s;
+    }
+    .cmp-checkbox:hover { border-color: var(--accent2); }
+    .cmp-checkbox.on { background: var(--accent2); border-color: var(--accent2); color: white; }
+
+    .cmp-bar {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: var(--card); border: 1px solid rgba(79,70,229,0.4);
+      border-radius: 999px; padding: 8px 16px;
+      display: none; align-items: center; gap: 14px;
+      z-index: 150; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+      animation: pop 0.25s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    .cmp-bar.open { display: flex; }
+    .cmp-bar-text { font-size: 13px; font-weight: 600; }
+    .cmp-bar-text strong { color: var(--accent2); }
+    .cmp-bar .btn { padding: 6px 14px; font-size: 12px; }
+
+    /* Compare modal contents */
+    .cmp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .cmp-table th, .cmp-table td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); text-align: left; }
+    .cmp-table th { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+    .cmp-table td.metric-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); }
+    .cmp-table td.metric-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; text-align: right; }
+    .cmp-table .winner { background: rgba(16,185,129,0.08); }
+    .cmp-table .winner .metric-val { color: var(--green); }
+    .cmp-table .loser  .metric-val { color: var(--muted); }
+    .cmp-table .changed { background: rgba(245,158,11,0.06); }
+    .cmp-row-header { background: rgba(255,255,255,0.03); }
+    .cmp-row-header td { font-weight: 700; color: var(--text); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
   </style>
 </head>
 <body>
@@ -163,6 +202,7 @@
          data-has-ai="{{ r.has_ai|lower }}"
          data-has-set="{{ r.has_set|lower }}"
          data-search="{{ (r.run_id ~ ' ' ~ r.phase)|lower }}">
+      <div class="cmp-checkbox" onclick="toggleCompare(this, '{{ r.run_id }}')" title="Select for compare">✓</div>
       <div class="run-header">
         <div style="min-width:0;flex:1;">
           <div class="run-id">{{ r.run_id }}</div>
@@ -214,6 +254,28 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  <!-- ── Floating compare bar ──────────────────────────────────── -->
+  <div class="cmp-bar" id="cmp-bar">
+    <span class="cmp-bar-text"><strong id="cmp-count">0</strong> selected for compare</span>
+    <button class="btn primary" onclick="openCompare()">Compare</button>
+    <button class="btn" onclick="clearCompare()">Clear</button>
+  </div>
+
+  <!-- ── Compare modal ─────────────────────────────────────────── -->
+  <div class="overlay" id="cmp-overlay" onclick="if(event.target===this)closeCompare()">
+    <div class="modal" style="width:920px;max-width:96vw;">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Compare Runs</div>
+          <div class="modal-meta" id="cmp-meta">side-by-side metrics + parameter diff</div>
+        </div>
+        <button class="close-btn" onclick="closeCompare()">✕</button>
+      </div>
+      <div class="modal-body" id="cmp-body"></div>
+      <div class="modal-footer"><button class="btn" onclick="closeCompare()">Close</button></div>
+    </div>
+  </div>
 
   <!-- ── Detail Modal (params + AI reasoning + .set) ─────────────── -->
   <div class="overlay" id="overlay" onclick="if(event.target===this)closeDetail()">
@@ -402,8 +464,122 @@ function closeDetail() {
   document.getElementById('overlay').classList.remove('open');
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeDetail();
+  if (e.key === 'Escape') { closeDetail(); closeCompare(); }
 });
+
+// ── Compare runs ────────────────────────────────────────────
+const compareSet = new Set();
+const COMPARE_MAX = 4;
+
+function toggleCompare(box, runId) {
+  if (compareSet.has(runId)) {
+    compareSet.delete(runId);
+    box.classList.remove('on');
+  } else {
+    if (compareSet.size >= COMPARE_MAX) {
+      alert('Compare up to ' + COMPARE_MAX + ' runs at once.');
+      return;
+    }
+    compareSet.add(runId);
+    box.classList.add('on');
+  }
+  const bar = document.getElementById('cmp-bar');
+  const count = compareSet.size;
+  document.getElementById('cmp-count').textContent = count;
+  bar.classList.toggle('open', count >= 2);
+}
+
+function clearCompare() {
+  compareSet.clear();
+  document.querySelectorAll('.cmp-checkbox.on').forEach(c => c.classList.remove('on'));
+  document.getElementById('cmp-bar').classList.remove('open');
+  document.getElementById('cmp-count').textContent = '0';
+}
+
+async function openCompare() {
+  if (compareSet.size < 2) return;
+  const ids = Array.from(compareSet);
+  const overlay = document.getElementById('cmp-overlay');
+  const body    = document.getElementById('cmp-body');
+  overlay.classList.add('open');
+  body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);">Loading…</div>';
+  document.getElementById('cmp-meta').textContent = ids.length + ' runs · side-by-side metrics + parameter diff';
+
+  try {
+    const detail = await Promise.all(ids.map(id => fetch('/api/run/' + encodeURIComponent(id)).then(r => r.json())));
+    const metrics = [
+      ['score',         'Score',         v => Number(v || 0).toFixed(4), 'higher'],
+      ['net_profit',    'Net Profit',    v => '$' + Number(v || 0).toLocaleString(undefined, {maximumFractionDigits: 0}), 'higher'],
+      ['profit_factor', 'Profit Factor', v => Number(v || 0).toFixed(2), 'higher'],
+      ['calmar',        'Calmar',        v => Number(v || 0).toFixed(2), 'higher'],
+      ['drawdown_pct',  'Max Drawdown',  v => Number(v || 0).toFixed(1) + '%', 'lower'],
+      ['win_rate',      'Win Rate',      v => Number(v || 0).toFixed(1) + '%', 'higher'],
+      ['total_trades',  'Trades',        v => Number(v || 0).toLocaleString(), 'higher'],
+    ];
+
+    // Build header row
+    let html = '<table class="cmp-table">';
+    html += '<thead><tr><th>Metric</th>';
+    detail.forEach(d => {
+      const phase = (d.phase || '—').replace(/_/g, ' ');
+      html += `<th style="text-align:right;">
+        <div style="color:var(--accent2);font-family:'JetBrains Mono',monospace;font-size:10px;">${escHtml(d.run_id || '?')}</div>
+        <div style="color:var(--muted);font-size:9px;font-weight:500;">${escHtml(phase)}</div>
+      </th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    // Metric rows: highlight winner per row
+    for (const [key, label, fmt, dir] of metrics) {
+      const vals = detail.map(d => {
+        const raw = d[key];
+        return raw === undefined || raw === null ? null : parseFloat(raw);
+      });
+      const winners = (() => {
+        const valid = vals.filter(v => v !== null && !isNaN(v));
+        if (!valid.length) return [];
+        const target = dir === 'higher' ? Math.max(...valid) : Math.min(...valid);
+        return vals.map(v => v === target);
+      })();
+      html += `<tr><td class="metric-name">${escHtml(label)}</td>`;
+      detail.forEach((d, i) => {
+        const cls = vals[i] === null ? '' : (winners[i] ? 'winner' : 'loser');
+        html += `<td class="metric-val ${cls}">${escHtml(d[key] === undefined || d[key] === null ? '—' : fmt(d[key]))}</td>`;
+      });
+      html += '</tr>';
+    }
+
+    // Parameter diff section
+    html += '<tr class="cmp-row-header"><td colspan="' + (detail.length + 1) + '">Parameters · differences highlighted</td></tr>';
+    const allParams = new Set();
+    detail.forEach(d => Object.keys(d.params || {}).forEach(p => allParams.add(p)));
+    const paramList = Array.from(allParams).sort();
+    paramList.forEach(p => {
+      const vals = detail.map(d => (d.params || {})[p]);
+      const allEqual = vals.every(v => JSON.stringify(v) === JSON.stringify(vals[0]));
+      const cls = allEqual ? '' : 'changed';
+      html += `<tr class="${cls}"><td class="metric-name">${escHtml(p)}</td>`;
+      vals.forEach(v => {
+        const display = v === undefined || v === null
+          ? '—'
+          : (typeof v === 'number'
+              ? (v % 1 !== 0 ? v.toFixed(4) : String(v))
+              : String(v));
+        html += `<td class="metric-val">${escHtml(display)}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    body.innerHTML = html;
+  } catch (err) {
+    body.innerHTML = '<div style="color:var(--red);padding:16px;">Compare failed: ' + escHtml(err.message) + '</div>';
+  }
+}
+
+function closeCompare() {
+  document.getElementById('cmp-overlay').classList.remove('open');
+}
 </script>
 </body>
 </html>

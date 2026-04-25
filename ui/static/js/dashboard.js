@@ -1030,10 +1030,11 @@ function renderThinkingFeed() {
     const iter = e.iteration ? `<span class="tf-chip">iter ${e.iteration}</span>` : '';
     const phase = e.phase ? `<span class="tf-chip">${escapeHtml(e.phase)}</span>` : '';
     const time = e.time ? `<span>${escapeHtml(e.time)}</span>` : '';
-    return `<div class="tf-entry ${kind}">
+    const cursor = e.streaming ? '<span class="tf-cursor">▌</span>' : '';
+    return `<div class="tf-entry ${kind}${e.streaming ? ' streaming' : ''}">
       <div class="tf-marker">${_markerFor(kind)}</div>
       <div class="tf-body">
-        <div class="tf-msg">${escapeHtml(e.msg)}</div>
+        <div class="tf-msg">${escapeHtml(e.msg)}${cursor}</div>
         <div class="tf-meta">${time}${iter}${phase}</div>
       </div>
     </div>`;
@@ -1255,6 +1256,52 @@ function dismissEarlyTerm() {
 
 socket.on('ai_thinking', (d) => {
   addThinking(d);
+});
+
+/* ── Live AI token streaming ─────────────────────────────────────
+   Claude streams the reasoning text token-by-token via SSE; the
+   pipeline forwards each chunk as `ai_thinking_chunk`. We render
+   it as a single growing bubble that finalises on `end`. */
+let _streamingEntry = null;     // index into thinkingFeedState.entries while open
+socket.on('ai_thinking_chunk', (d) => {
+  const evt = d.event;
+  if (evt === 'start') {
+    // Open a new entry. Render-loop will paint as deltas arrive.
+    thinkingFeedState.entries.push({
+      msg:       '',
+      kind:      'reasoning',
+      streaming: true,
+      time:      nowStr(),
+      phase:     d.phase,
+    });
+    if (thinkingFeedState.entries.length > MAX_THINKING_ENTRIES) {
+      thinkingFeedState.entries.shift();
+    }
+    _streamingEntry = thinkingFeedState.entries.length - 1;
+    safe('tf-badge', e => { e.textContent = 'Streaming'; e.className = 'badge live'; });
+    renderThinkingFeed();
+  } else if (evt === 'delta' && _streamingEntry != null) {
+    const e = thinkingFeedState.entries[_streamingEntry];
+    if (e) {
+      e.msg += d.text || '';
+      renderThinkingFeed();
+    }
+  } else if (evt === 'end' && _streamingEntry != null) {
+    const e = thinkingFeedState.entries[_streamingEntry];
+    if (e) {
+      e.streaming = false;
+      renderThinkingFeed();
+    }
+    _streamingEntry = null;
+    safe('tf-badge', e => { e.textContent = 'Live'; e.className = 'badge live'; });
+  } else if (evt === 'error') {
+    if (_streamingEntry != null) {
+      const e = thinkingFeedState.entries[_streamingEntry];
+      if (e) { e.kind = 'warning'; e.streaming = false; e.msg += ' [stream error: ' + (d.error || '?') + ']'; }
+    }
+    _streamingEntry = null;
+    renderThinkingFeed();
+  }
 });
 
 socket.on('param_changes', (d) => {
@@ -1769,38 +1816,117 @@ async function openBestResult() {
       evoSection.innerHTML = '<div class="rd-section-title">Evolution Path</div><div style="font-size:0.76rem;color:var(--muted);padding:0.5rem 0;">No evolution data available for this run.</div>';
       return;
     }
-    const items = evo.map((r, i) => {
-      const tag = r.is_best ? '<span style="background:rgba(16,185,129,0.18);color:var(--green);padding:0.08rem 0.4rem;border-radius:4px;font-size:0.58rem;font-weight:700;margin-left:0.4rem">BEST</span>' : '';
-      const phaseLbl = (r.phase || '').replace(/_/g, ' ');
-      const pf = Number(r.profit_factor || 0).toFixed(2);
-      const calmar = Number(r.calmar || 0).toFixed(2);
-      const dd = Number(r.max_drawdown || 0).toFixed(1);
-      const score = Number(r.score || 0).toFixed(3);
-      const changeList = (r.changes || []).slice(0, 3).map(c => {
-        const p = c.param || c.parameter || '?';
-        const v = c.value !== undefined ? c.value : (c.to !== undefined ? c.to : '?');
-        return `${escapeHtml(p)}=${escapeHtml(String(v))}`;
-      }).join(', ');
-      const analysis = r.analysis ? `<div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;line-height:1.45">${escapeHtml(r.analysis).slice(0, 220)}${r.analysis.length > 220 ? '…' : ''}</div>` : '';
-      return `<div style="border-left:2px solid ${r.is_best ? 'var(--green)' : 'rgba(124,109,250,0.4)'};padding:0.5rem 0.65rem;margin-bottom:0.4rem;background:rgba(255,255,255,0.02);border-radius:0 6px 6px 0">
-        <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.72rem">
-          <span style="font-family:'JetBrains Mono',monospace;color:var(--muted)">#${i + 1}</span>
-          <span style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">${escapeHtml(r.run_id)}</span>
-          <span style="color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(phaseLbl)}</span>
-          ${tag}
-          <span style="margin-left:auto;font-size:0.65rem;font-family:'JetBrains Mono',monospace;color:var(--muted)">score ${score}</span>
-        </div>
-        <div style="display:flex;gap:0.6rem;font-size:0.65rem;color:var(--muted);margin-top:0.2rem;font-family:'JetBrains Mono',monospace">
-          <span>PF ${pf}</span><span>Calmar ${calmar}</span><span>DD ${dd}%</span>
-        </div>
-        ${changeList ? `<div style="font-size:0.66rem;color:var(--teal);font-family:'JetBrains Mono',monospace;margin-top:0.25rem">Δ ${escapeHtml(changeList)}</div>` : ''}
-        ${analysis}
-      </div>`;
-    }).join('');
+    // ── Replay scrubber: slider that walks through evolution one step at a time ──
+    const bestIdx = Math.max(0, evo.findIndex(r => r.is_best));
     evoSection.innerHTML = `
-      <div class="rd-section-title">Evolution Path <span style="font-weight:500;color:var(--muted);letter-spacing:0.02em;text-transform:none;font-size:0.65rem">— ${evo.length} steps to this best result</span></div>
-      <div style="max-height:260px;overflow-y:auto;padding:0.25rem 0;">${items}</div>
+      <div class="rd-section-title">
+        Evolution Path
+        <span style="font-weight:500;color:var(--muted);letter-spacing:0.02em;text-transform:none;font-size:0.65rem">— ${evo.length} steps to this best result · drag the slider to replay</span>
+      </div>
+
+      <div id="evo-scrubber-wrap" style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:0.85rem 1rem;margin-bottom:0.5rem;">
+
+        <!-- Step indicator + slider -->
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;">
+          <button id="evo-prev-btn" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:0.85rem;width:28px;height:28px;border-radius:6px;cursor:pointer;flex-shrink:0;">‹</button>
+          <input type="range" id="evo-slider" min="0" max="${evo.length - 1}" value="${bestIdx}"
+                 style="flex:1;accent-color:var(--accent2);cursor:pointer;">
+          <button id="evo-next-btn" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:0.85rem;width:28px;height:28px;border-radius:6px;cursor:pointer;flex-shrink:0;">›</button>
+          <button id="evo-play-btn" style="background:rgba(79,70,229,0.15);border:1px solid rgba(79,70,229,0.4);color:var(--accent2);font-family:inherit;font-size:0.7rem;padding:4px 10px;border-radius:6px;cursor:pointer;flex-shrink:0;font-weight:600;">▶ Play</button>
+        </div>
+
+        <!-- Step header -->
+        <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.72rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+          <span id="evo-step-num" style="font-family:'JetBrains Mono',monospace;color:var(--muted);font-weight:600;"></span>
+          <span id="evo-step-id" style="font-family:'JetBrains Mono',monospace;color:var(--accent2);"></span>
+          <span id="evo-step-phase" style="color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.06em;"></span>
+          <span id="evo-step-best"></span>
+          <span style="margin-left:auto;font-size:0.65rem;font-family:'JetBrains Mono',monospace;color:var(--muted);">score <span id="evo-step-score" style="color:var(--text);font-weight:600;"></span></span>
+        </div>
+
+        <!-- Metrics for this step -->
+        <div id="evo-step-metrics" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.4rem;margin-bottom:0.55rem;"></div>
+
+        <!-- Changes -->
+        <div id="evo-step-changes" style="font-size:0.7rem;font-family:'JetBrains Mono',monospace;color:var(--teal);line-height:1.5;"></div>
+
+        <!-- AI analysis -->
+        <div id="evo-step-analysis" style="font-size:0.72rem;color:#94a3b8;margin-top:0.45rem;line-height:1.55;"></div>
+      </div>
     `;
+
+    // Wire scrubber
+    const slider  = document.getElementById('evo-slider');
+    const stepNum = document.getElementById('evo-step-num');
+    const stepId  = document.getElementById('evo-step-id');
+    const stepPh  = document.getElementById('evo-step-phase');
+    const stepBst = document.getElementById('evo-step-best');
+    const stepScr = document.getElementById('evo-step-score');
+    const stepMtr = document.getElementById('evo-step-metrics');
+    const stepChg = document.getElementById('evo-step-changes');
+    const stepAna = document.getElementById('evo-step-analysis');
+    const prevBtn = document.getElementById('evo-prev-btn');
+    const nextBtn = document.getElementById('evo-next-btn');
+    const playBtn = document.getElementById('evo-play-btn');
+
+    function paintStep(i) {
+      const r = evo[i];
+      if (!r) return;
+      stepNum.textContent = `Step ${i + 1} / ${evo.length}`;
+      stepId.textContent  = r.run_id || '';
+      stepPh.textContent  = (r.phase || '').replace(/_/g, ' ');
+      stepBst.innerHTML   = r.is_best ? ' <span style="background:rgba(16,185,129,0.18);color:var(--green);padding:0.06rem 0.4rem;border-radius:4px;font-size:0.55rem;font-weight:700;letter-spacing:0.04em;">BEST</span>' : '';
+      stepScr.textContent = Number(r.score || 0).toFixed(3);
+
+      const cells = [
+        { l: 'PF',     v: Number(r.profit_factor || 0).toFixed(2),     c: 'var(--yellow)' },
+        { l: 'Calmar', v: Number(r.calmar || 0).toFixed(2),            c: 'var(--teal)' },
+        { l: 'DD',     v: Number(r.max_drawdown || 0).toFixed(1) + '%', c: 'var(--red)' },
+        { l: 'Profit', v: fmtMoney(r.net_profit || 0),                  c: r.net_profit >= 0 ? 'var(--green)' : 'var(--red)' },
+      ];
+      stepMtr.innerHTML = cells.map(c => `<div style="background:rgba(255,255,255,0.03);padding:5px 8px;border-radius:5px;"><div style="font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">${c.l}</div><div style="font-size:0.85rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:${c.c};">${escapeHtml(c.v)}</div></div>`).join('');
+
+      const changes = r.changes || [];
+      if (changes.length) {
+        stepChg.innerHTML = '<strong style="color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:0.06em;font-size:0.6rem;">Δ</strong> ' + changes.slice(0, 4).map(c => {
+          const p = c.param || c.parameter || '?';
+          const v = c.value !== undefined ? c.value : (c.to !== undefined ? c.to : '?');
+          return `${escapeHtml(p)}=${escapeHtml(String(v))}`;
+        }).join(', ');
+      } else {
+        stepChg.innerHTML = '<em style="color:var(--muted);">— no parameter changes (LHS seed)</em>';
+      }
+      stepAna.textContent = r.analysis || '';
+      slider.value = i;
+    }
+
+    slider.addEventListener('input', () => paintStep(parseInt(slider.value, 10)));
+    prevBtn.addEventListener('click', () => paintStep(Math.max(0, parseInt(slider.value, 10) - 1)));
+    nextBtn.addEventListener('click', () => paintStep(Math.min(evo.length - 1, parseInt(slider.value, 10) + 1)));
+
+    // Play: auto-step ~700ms intervals
+    let playTimer = null;
+    playBtn.addEventListener('click', () => {
+      if (playTimer) {
+        clearInterval(playTimer); playTimer = null;
+        playBtn.textContent = '▶ Play';
+        return;
+      }
+      playBtn.textContent = '⏸ Pause';
+      let pos = parseInt(slider.value, 10);
+      if (pos >= evo.length - 1) pos = 0;
+      playTimer = setInterval(() => {
+        pos++;
+        if (pos >= evo.length) {
+          clearInterval(playTimer); playTimer = null;
+          playBtn.textContent = '▶ Play';
+          return;
+        }
+        paintStep(pos);
+      }, 700);
+    });
+
+    paintStep(bestIdx);  // start showing the best step
   } catch (err) {
     addLog('Failed to open best result: ' + err.message, 'error');
   }
