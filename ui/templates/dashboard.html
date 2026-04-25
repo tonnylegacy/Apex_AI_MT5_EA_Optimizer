@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>APEX — AI-Powered EA Optimizer</title>
+  <link rel="icon" type="image/png" href="/static/img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -16,16 +17,19 @@
       --card-hover:      #131d35;
       --border:          rgba(255,255,255,0.07);
       --border-hover:    rgba(255,255,255,0.14);
-      --accent:          #4f46e5;
-      --accent2:         #7c6dfa;
+      --brand-cyan:      #00d4ff;
+      --brand-blue:      #4f6cff;
+      --brand-purple:    #9333ea;
+      --accent:          #4f6cff;
+      --accent2:         #8b5cf6;
       --teal:            #00d4aa;
       --text:            #e2e8f0;
       --muted:           #64748b;
       --green:           #10b981;
       --red:             #ef4444;
       --yellow:          #f59e0b;
-      --nav-active-bg:   rgba(79,70,229,0.18);
-      --nav-active-border: #4f46e5;
+      --nav-active-bg:   rgba(79,108,255,0.18);
+      --nav-active-border: #4f6cff;
     }
 
     /* ── Reset ──────────────────────────────────────────────────── */
@@ -70,11 +74,17 @@
       border-bottom: 1px solid var(--border);
       margin-bottom: 0.75rem;
     }
+    .logo-mark,
+    .cmd-mark {
+      display: block;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 10px rgba(79,108,255,0.3));
+    }
     .logo-text {
       font-size: 1.25rem;
       font-weight: 800;
       letter-spacing: 0.12em;
-      background: linear-gradient(135deg, #7c6dfa, #00d4aa);
+      background: linear-gradient(180deg, #ffffff 0%, #d4dae6 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -82,11 +92,12 @@
     .logo-tagline {
       font-size: 0.58rem;
       color: var(--muted);
-      font-weight: 400;
-      letter-spacing: 0.06em;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       display: block;
       line-height: 1;
-      margin-top: -2px;
+      margin-top: 2px;
       -webkit-text-fill-color: var(--muted);
     }
 
@@ -217,7 +228,7 @@
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, rgba(0,229,255,0.45), rgba(79,70,229,0.55), rgba(124,58,237,0.45));
+      background: linear-gradient(90deg, rgba(0,212,255,0.55), rgba(79,108,255,0.65), rgba(147,51,234,0.55));
     }
     .cmd-logo {
       display: flex;
@@ -234,19 +245,22 @@
       font-size: 1.05rem;
       font-weight: 800;
       letter-spacing: 0.14em;
-      background: linear-gradient(135deg, #00e5ff 0%, #4f46e5 50%, #7c3aed 100%);
+      background: linear-gradient(180deg, #ffffff 0%, #d4dae6 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
     .cmd-tagline {
-      font-size: 0.46rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      color: var(--muted);
+      font-size: 0.5rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      -webkit-text-fill-color: var(--muted);
+      display: inline-flex;
+      gap: 0.35em;
     }
+    .cmd-tagline .tag-cyan   { color: #00d4ff; }
+    .cmd-tagline .tag-purple { color: #b06bff; }
+    .cmd-tagline .tag-white  { color: #cfd5e0; }
     .cmd-sep {
       width: 1px;
       height: 30px;
@@ -310,7 +324,7 @@
     }
     .cmd-prog-fill {
       height: 100%;
-      background: linear-gradient(90deg, #00e5ff, #4f46e5);
+      background: linear-gradient(90deg, #00d4ff, #4f6cff, #9333ea);
       border-radius: 999px;
       transition: width 0.5s ease;
     }
@@ -347,8 +361,9 @@
       white-space: nowrap;
     }
     .cmd-btn-start {
-      background: linear-gradient(135deg, #4f46e5, #7c6dfa);
+      background: linear-gradient(135deg, #4f6cff 0%, #9333ea 100%);
       color: white;
+      box-shadow: 0 0 0 1px rgba(147,51,234,0.4), 0 4px 14px rgba(79,108,255,0.25);
     }
     .cmd-btn-start:hover { opacity: 0.88; }
     .cmd-btn-pause {
@@ -399,7 +414,7 @@
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 2px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      background: linear-gradient(90deg, #00d4ff, #4f6cff, #9333ea);
       opacity: 0;
       transition: opacity 0.2s;
     }
@@ -1629,27 +1644,10 @@
 
     <!-- Logo -->
     <div class="logo-wrap">
-      <svg width="36" height="40" viewBox="0 0 40 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#00e5ff"/>
-            <stop offset="45%" stop-color="#4f46e5"/>
-            <stop offset="100%" stop-color="#7c3aed"/>
-          </linearGradient>
-          <clipPath id="sbTriClip">
-            <polygon points="20,2 39,40 1,40"/>
-          </clipPath>
-        </defs>
-        <polygon points="20,2 39,40 1,40" fill="rgba(79,70,229,0.08)" stroke="url(#logoGrad)" stroke-width="2" stroke-linejoin="round"/>
-        <line x1="10" y1="30" x2="30" y2="30" stroke="url(#logoGrad)" stroke-width="1.5"/>
-        <rect x="11" y="31" width="4" height="8" rx="0.8" fill="url(#logoGrad)" opacity="0.5" clip-path="url(#sbTriClip)"/>
-        <rect x="17" y="24" width="4" height="15" rx="0.8" fill="url(#logoGrad)" opacity="0.75" clip-path="url(#sbTriClip)"/>
-        <rect x="23" y="18" width="4" height="21" rx="0.8" fill="url(#logoGrad)" clip-path="url(#sbTriClip)"/>
-        <polyline points="8,38 17,27 22,30 33,16" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#sbTriClip)" opacity="0.9"/>
-      </svg>
+      <img src="/static/img/apex-mark.png" alt="APEX" class="logo-mark" width="38" height="42">
       <div>
         <span class="logo-text">APEX</span>
-        <span class="logo-tagline">AI Optimizer</span>
+        <span class="logo-tagline">AI Powered Optimizer</span>
       </div>
     </div>
 
@@ -1728,27 +1726,15 @@
 
       <!-- Logo -->
       <div class="cmd-logo">
-        <svg width="32" height="36" viewBox="0 0 40 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="hdrLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#00e5ff"/>
-              <stop offset="45%" stop-color="#4f46e5"/>
-              <stop offset="100%" stop-color="#7c3aed"/>
-            </linearGradient>
-            <clipPath id="hdrTriClip">
-              <polygon points="20,2 39,40 1,40"/>
-            </clipPath>
-          </defs>
-          <polygon points="20,2 39,40 1,40" fill="rgba(79,70,229,0.09)" stroke="url(#hdrLogoGrad)" stroke-width="1.8" stroke-linejoin="round"/>
-          <line x1="10" y1="30" x2="30" y2="30" stroke="url(#hdrLogoGrad)" stroke-width="1.4"/>
-          <rect x="11" y="31" width="4" height="8" rx="0.8" fill="url(#hdrLogoGrad)" opacity="0.5" clip-path="url(#hdrTriClip)"/>
-          <rect x="17" y="24" width="4" height="15" rx="0.8" fill="url(#hdrLogoGrad)" opacity="0.75" clip-path="url(#hdrTriClip)"/>
-          <rect x="23" y="18" width="4" height="21" rx="0.8" fill="url(#hdrLogoGrad)" clip-path="url(#hdrTriClip)"/>
-          <polyline points="8,38 17,27 22,30 33,16" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#hdrTriClip)" opacity="0.9"/>
-        </svg>
+        <img src="/static/img/apex-mark.png" alt="APEX" class="cmd-mark" width="34" height="38">
         <div class="cmd-logo-text">
           <span class="cmd-apex">APEX</span>
-          <span class="cmd-tagline">AI Powered EA Optimizer</span>
+          <span class="cmd-tagline">
+            <span class="tag-cyan">AI</span>
+            <span class="tag-white">POWERED</span>
+            <span class="tag-purple">EA</span>
+            <span class="tag-white">OPTIMIZER</span>
+          </span>
         </div>
       </div>
 

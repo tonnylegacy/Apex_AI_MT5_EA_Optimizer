@@ -898,11 +898,17 @@ class OptimizationPipeline:
         delay = float(os.environ.get("APEX_DEMO_RUN_SECONDS", "1.5"))
         time.sleep(max(0.05, delay))
 
-        # Run AI reasoning if enabled — same flow as live mode
-        try:
-            self._reason_about_run(run_id, metrics, [], params)
-        except Exception:
-            pass
+        # Run AI reasoning if enabled — same flow as live mode.
+        # In showcase mode (APEX_DEMO_SKIP_PHASE1_AI=1) we skip Phase 1's
+        # per-run AI analysis to keep total runtime to ~3-4 min. The AI loop
+        # in Phase 2 — where reasoning actually drives parameter changes — is
+        # untouched, so the headline feature is still visible.
+        skip_p1_ai = os.environ.get("APEX_DEMO_SKIP_PHASE1_AI", "").strip() in ("1", "true", "yes")
+        if not (skip_p1_ai and phase.startswith("phase1")):
+            try:
+                self._reason_about_run(run_id, metrics, [], params)
+            except Exception:
+                pass
 
         return ranker.make_result(run_id, params, phase, metrics)
 
