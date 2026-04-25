@@ -38,9 +38,15 @@ _TESTER_KEYS = {
 }
 
 # EA params that should always be fixed even if they have a range
+# Includes magic numbers, debug/UI flags, and MT5 timeframe enum constants
+# (HTF/MTF/LTF values like 16388 are PERIOD_H1/etc — not optimizable scalars).
 _FORCE_FIXED_PATTERNS = [
     "testermode", "testeri", "testerinit", "showpanel",
     "magicnumber", "magic",
+    "htf", "mtf", "ltf",        # higher/medium/lower timeframe enums
+    "_tf", "timeframe",
+    "comment", "label", "prefix",
+    "verbose", "debug", "log",
 ]
 
 
@@ -64,6 +70,7 @@ class SetParser:
         default_optimize: bool = False,
         force_optimize: Optional[set[str]] = None,
         force_fixed:    Optional[set[str]] = None,
+        auto_infer_ranges: bool = True,
     ) -> ParameterSchema:
         """
         Parse a .set file and return a ParameterSchema.
@@ -118,6 +125,14 @@ class SetParser:
             if param is None:
                 logger.debug(f"SetParser: skipped unrecognised line: {line!r}")
                 continue
+
+            # If the file had no optimization metadata (just `Name=value`),
+            # heuristically infer a reasonable range so the user can still
+            # optimize. Triggered for raw MT5 "saved settings" .set files.
+            if auto_infer_ranges and param.type == "fixed" and "|" not in rest:
+                inferred = self._infer_range_from_value(name, rest)
+                if inferred is not None:
+                    param = inferred
 
             # Apply force-fixed overrides
             if name in force_fixed or self._is_force_fixed(name):
@@ -276,3 +291,116 @@ class SetParser:
         """Return True for params that are always fixed regardless of their range."""
         lower = name.lower()
         return any(pat in lower for pat in _FORCE_FIXED_PATTERNS)
+
+    # ── Range inference for "saved settings" .set files ──────────────────────
+
+    def _infer_range_from_value(self, name: str, raw: str) -> Optional[ParameterDef]:
+        """
+        Heuristic range inference for .set files that contain bare `Name=value`
+        lines (no `|min|max|step` metadata). Common with files saved out of MT5
+        directly rather than exported as an optimization preset.
+
+        Returns None to leave the param as fixed (e.g. magic numbers, strings).
+        """
+        lower = name.lower()
+
+        # Force-fixed by name pattern → keep fixed
+        if self._is_force_fixed(name):
+            return None
+
+        # Bool: explicit true/false, or value 0/1 + name implies a toggle
+        if raw.lower() in ("true", "false"):
+            default_b = raw.lower() == "true"
+            return ParameterDef(
+                name=name, type="bool", default=default_b,
+                min=0.0, max=1.0, step=1.0, optimize=False,
+            )
+
+        try:
+            v = float(raw)
+        except ValueError:
+            return None  # non-numeric (e.g. enum string) → leave fixed
+
+        is_int_value = ("." not in raw) and v == int(v)
+        toggle_names = ("use", "enable", "allow", "show", "is_", "include", "with")
+        looks_toggle = any(lower.startswith(p) for p in toggle_names) and v in (0, 1)
+        if looks_toggle:
+            return ParameterDef(
+                name=name, type="bool", default=bool(int(v)),
+                min=0.0, max=1.0, step=1.0, optimize=False,
+            )
+
+        if v == 0:
+            # Can't ±% a zero meaningfully — give a small fixed nudge
+            if is_int_value:
+                return ParameterDef(name=name, type="int", default=0,
+                                    min=0.0, max=10.0, step=1.0, optimize=False)
+            return ParameterDef(name=name, type="float", default=0.0,
+                                min=0.0, max=1.0, step=0.05, optimize=False)
+
+        # Pattern-based ranges by name suffix / keyword
+        # (lower-bound, upper-bound multipliers, step, force_int)
+        patterns = [
+            ("pips",        0.5, 2.0,  None,  True),
+            ("period",      0.5, 2.0,  1.0,   True),
+            ("lookback",    0.5, 2.0,  1.0,   True),
+            ("multiplier",  0.5, 2.0,  None,  False),
+            ("ratio",       0.5, 2.0,  None,  False),
+            ("rrratio",     0.5, 2.5,  0.25,  False),
+            ("percent",     0.5, 2.0,  None,  False),
+            ("pct",         0.5, 2.0,  None,  False),
+            ("risk",        0.5, 2.0,  None,  False),
+            ("buffer",      0.5, 2.0,  None,  False),
+            ("threshold",   0.5, 2.0,  None,  False),
+            ("score",       0.5, 1.5,  0.05,  False),
+            ("size",        0.5, 2.0,  None,  False),
+            ("lot",         0.5, 2.0,  0.01,  False),
+            ("spread",      0.5, 2.0,  1.0,   True),
+            ("trades",      0.5, 2.5,  1.0,   True),
+            ("hour",        0.0, 23.0, 1.0,   True),
+            ("session",     0.0, 23.0, 1.0,   True),
+        ]
+        match = None
+        for kw, *_ in patterns:
+            if kw in lower:
+                match = next(p for p in patterns if p[0] == kw)
+                break
+
+        if match:
+            _, lo_mul, hi_mul, step_override, force_int = match
+            lo = abs(v) * lo_mul
+            hi = abs(v) * hi_mul
+            if v < 0:
+                lo, hi = -hi, -lo
+            # Special-case hour ranges (absolute, not %-of-value)
+            if match[0] in ("hour", "session"):
+                lo, hi = 0.0, 23.0
+        else:
+            # Generic fallback: ±50% of value
+            lo = abs(v) * 0.5
+            hi = abs(v) * 2.0
+            if v < 0:
+                lo, hi = -hi, -lo
+            step_override = None
+            force_int = is_int_value
+
+        # Choose step
+        if step_override is not None:
+            step = step_override
+        elif force_int:
+            span = hi - lo
+            step = max(1.0, round(span / 10.0))
+        else:
+            span = hi - lo
+            step = round(span / 10.0, 4)
+            if step <= 0:
+                step = 0.01
+
+        ptype = "int" if force_int else "float"
+        default = int(round(v)) if force_int else v
+
+        return ParameterDef(
+            name=name, type=ptype, default=default,
+            min=round(lo, 4), max=round(hi, 4), step=step,
+            optimize=False,
+        )
