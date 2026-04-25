@@ -1,267 +1,456 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MT5 Smart Optimizer</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APEX — AI-Powered EA Optimizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080d1a;
+      --accent: #4f46e5;
+      --accent2: #7c6dfa;
+      --teal: #00d4aa;
+      --text: #e2e8f0;
+      --muted: #64748b;
+    }
 
-  :root {
-    --bg:      #07090f;
-    --bg2:     #0d1117;
-    --bg3:     #141b27;
-    --border:  rgba(255,255,255,0.07);
-    --accent:  #00d4aa;
-    --accent2: #7c6dfa;
-    --warn:    #f59e0b;
-    --text:    #e2e8f0;
-    --muted:   #64748b;
-    --glow:    0 0 40px rgba(0,212,170,0.15);
-  }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  html, body { height: 100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-  body {
-    font-family: 'Inter', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    display: grid;
-    place-items: center;
-    min-height: 100vh;
-    overflow: hidden;
-  }
+    /* Grid overlay */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,212,170,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,170,0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+      pointer-events: none;
+      z-index: 0;
+    }
 
-  /* Animated background grid */
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background-image:
-      linear-gradient(rgba(0,212,170,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,212,170,0.03) 1px, transparent 1px);
-    background-size: 60px 60px;
-    animation: gridScroll 20s linear infinite;
-    pointer-events: none;
-    z-index: 0;
-  }
-  @keyframes gridScroll { to { background-position: 60px 60px; } }
+    /* Glow orb */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 20%;
+      left: 10%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(79,70,229,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-  /* Glowing orbs */
-  .orb {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(120px);
-    opacity: 0.12;
-    pointer-events: none;
-    z-index: 0;
-    animation: orb-float 8s ease-in-out infinite;
-  }
-  .orb-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; animation-delay: 0s; }
-  .orb-2 { width: 500px; height: 500px; background: var(--accent2); bottom: -200px; right: -100px; animation-delay: 4s; }
-  @keyframes orb-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-30px)} }
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
 
-  .landing {
-    position: relative;
-    z-index: 1;
-    text-align: center;
-    max-width: 700px;
-    padding: 2rem;
-    animation: fadeUp 0.8s ease both;
-  }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+    /* Navbar */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.5rem 0;
+      margin-bottom: 4rem;
+    }
 
-  .logo {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 2.5rem;
-  }
-  .logo-icon {
-    width: 52px; height: 52px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 14px;
-    display: grid; place-items: center;
-    font-size: 1.6rem;
-    box-shadow: var(--glow);
-  }
-  .logo-name {
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: white;
-  }
-  .logo-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
 
-  h1 {
-    font-size: clamp(2.2rem, 5vw, 3.5rem);
-    font-weight: 900;
-    letter-spacing: -0.04em;
-    line-height: 1.1;
-    margin-bottom: 1.25rem;
-    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 60%, var(--accent2) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+    .nav-logo-text {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
-  .subtitle {
-    font-size: 1.1rem;
-    color: var(--muted);
-    line-height: 1.7;
-    margin-bottom: 3rem;
-    font-weight: 400;
-  }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
 
-  .actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+    .status-dot.running {
+      background: var(--teal);
+      box-shadow: 0 0 8px var(--teal);
+      animation: pulse 1.5s infinite;
+    }
+    .status-dot.idle { background: #475569; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.9rem 2rem;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    border: none;
-    font-family: inherit;
-  }
+    /* Hero */
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      min-height: 70vh;
+    }
 
-  .btn-primary {
-    background: linear-gradient(135deg, var(--accent), #00b890);
-    color: #051a14;
-    box-shadow: 0 4px 24px rgba(0,212,170,0.35);
-  }
-  .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 36px rgba(0,212,170,0.5);
-  }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.9rem;
+      background: rgba(79,70,229,0.15);
+      border: 1px solid rgba(79,70,229,0.3);
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--accent2);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
 
-  .btn-secondary {
-    background: var(--bg3);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-  .btn-secondary:hover {
-    background: #1e2a3f;
-    border-color: rgba(255,255,255,0.15);
-    transform: translateY(-2px);
-  }
+    .hero-logo-row {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
 
-  .stats {
-    display: flex;
-    gap: 2rem;
-    justify-content: center;
-    margin-top: 3.5rem;
-    padding-top: 2.5rem;
-    border-top: 1px solid var(--border);
-  }
-  .stat { text-align: center; }
-  .stat-val {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: var(--accent);
-    letter-spacing: -0.03em;
-  }
-  .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    .hero-title {
+      font-size: 5rem;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      background: linear-gradient(135deg, #ffffff 0%, #c7d2fe 50%, #00d4aa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.3rem 0.8rem;
-    background: rgba(0,212,170,0.1);
-    border: 1px solid rgba(0,212,170,0.2);
-    border-radius: 999px;
-    font-size: 0.78rem;
-    color: var(--accent);
-    margin-bottom: 2rem;
-  }
-  .pulse {
-    width: 7px; height: 7px;
-    background: var(--accent);
-    border-radius: 50%;
-    animation: pulse 2s ease infinite;
-  }
-  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
-</style>
+    .hero-subtitle-row {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-tagline {
+      font-size: 1.5rem;
+      font-weight: 300;
+      color: #94a3b8;
+      margin-bottom: 2.5rem;
+      line-height: 1.5;
+    }
+
+    .hero-tagline strong {
+      color: var(--teal);
+      font-weight: 600;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 3rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.9rem 2rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white; border: none; border-radius: 10px;
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      text-decoration: none; font-family: inherit;
+      box-shadow: 0 4px 24px rgba(79,70,229,0.4);
+      transition: all 0.2s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 36px rgba(79,70,229,0.5); }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.9rem 1.75rem;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text); border-radius: 10px;
+      font-size: 0.95rem; font-weight: 600;
+      text-decoration: none; font-family: inherit;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+
+    .hero-stats {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-stat { display: flex; flex-direction: column; }
+    .hero-stat-val {
+      font-size: 1.5rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--teal), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero-stat-lbl {
+      font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem;
+    }
+
+    /* Features panel */
+    .features-panel {
+      background: rgba(15,22,41,0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 2rem;
+      backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .features-panel::before {
+      content: 'APEX';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 4rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      background: linear-gradient(135deg, #4f46e5, #00d4aa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      opacity: 0.15;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .features-panel-title {
+      font-size: 0.75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.15em;
+      color: var(--muted); margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .features-list { display: flex; flex-direction: column; gap: 1.25rem; }
+
+    .feature-item { display: flex; align-items: flex-start; gap: 1rem; }
+
+    .feature-icon-wrap {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+    }
+    .feature-icon-wrap.purple { background: rgba(79,70,229,0.2); border: 1px solid rgba(79,70,229,0.3); }
+    .feature-icon-wrap.teal   { background: rgba(0,212,170,0.15); border: 1px solid rgba(0,212,170,0.3); }
+    .feature-icon-wrap.blue   { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); }
+    .feature-icon-wrap.green  { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); }
+
+    .feature-name {
+      font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      margin-bottom: 0.2rem;
+    }
+    .feature-name.purple { color: var(--accent2); }
+    .feature-name.teal   { color: var(--teal); }
+    .feature-name.blue   { color: #60a5fa; }
+    .feature-name.green  { color: #34d399; }
+
+    .feature-desc { font-size: 0.8rem; color: #94a3b8; line-height: 1.5; }
+
+    /* Footer */
+    .footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 768px) {
+      .hero { grid-template-columns: 1fr; min-height: auto; }
+      .hero-title { font-size: 3rem; }
+      .features-panel { display: none; }
+      .hero-stats { gap: 1.25rem; }
+    }
+  </style>
 </head>
 <body>
-<div class="orb orb-1"></div>
-<div class="orb orb-2"></div>
+<div class="page">
 
-<div class="landing">
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-logo">
+      <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
+        <polygon points="18,2 34,32 2,32" fill="url(#logoGradL)" opacity="0.15"/>
+        <polygon points="18,8 30,30 6,30" fill="url(#logoGradL)" opacity="0.3"/>
+        <path d="M18 6L22 14H14L18 6Z" fill="url(#logoGradL)"/>
+        <rect x="11" y="22" width="3" height="8" rx="1" fill="#00d4aa"/>
+        <rect x="16" y="18" width="3" height="12" rx="1" fill="#00d4aa" opacity="0.8"/>
+        <rect x="21" y="14" width="3" height="16" rx="1" fill="#00d4aa" opacity="0.6"/>
+        <defs>
+          <linearGradient id="logoGradL" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4f46e5"/>
+            <stop offset="100%" stop-color="#00d4aa"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <span class="nav-logo-text">APEX</span>
+    </div>
+    <div class="status-pill" id="status-pill">
+      <div class="status-dot idle" id="status-dot"></div>
+      <span id="status-text">Ready</span>
+    </div>
+  </nav>
 
-  <div class="logo">
-    <div class="logo-icon">⚡</div>
-    <div>
-      <div class="logo-name">MT5 Smart Optimizer</div>
-      <div class="logo-sub">Autonomous EA Optimization Engine</div>
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-left">
+      <div class="hero-badge">&#10022; Hackathon Edition 2026</div>
+
+      <div class="hero-logo-row">
+        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
+          <polygon points="36,4 68,64 4,64" fill="url(#heroGrad)" opacity="0.12"/>
+          <polygon points="36,16 60,60 12,60" fill="url(#heroGrad)" opacity="0.25"/>
+          <path d="M36 12L44 28H28L36 12Z" fill="url(#heroGrad)"/>
+          <path d="M33 20L36 13L39 20" stroke="#00d4aa" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <rect x="22" y="44" width="6" height="16" rx="2" fill="#00d4aa" opacity="0.9"/>
+          <rect x="33" y="36" width="6" height="24" rx="2" fill="#00d4aa" opacity="0.7"/>
+          <rect x="44" y="28" width="6" height="32" rx="2" fill="#00d4aa" opacity="0.5"/>
+          <defs>
+            <linearGradient id="heroGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#4f46e5"/>
+              <stop offset="100%" stop-color="#7c6dfa"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <div class="hero-title">APEX</div>
+      <div class="hero-subtitle-row">AI Powered EA Optimizer</div>
+
+      <div class="hero-tagline">
+        Optimize. <strong>Understand.</strong> Evolve.<br>
+        <span style="font-size:1rem">The first optimizer that tells you <em>why</em> &mdash; not just what.</span>
+      </div>
+
+      <div class="hero-ctas">
+        <a href="/setup" class="btn-primary">&#9889; Start Optimizing &rarr;</a>
+        <a href="/dashboard" class="btn-secondary">&#128202; Live Dashboard</a>
+        <a href="/reports" class="btn-secondary">&#128203; Reports</a>
+      </div>
+
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-val">3</div>
+          <div class="hero-stat-lbl">Phase Pipeline</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val">AI</div>
+          <div class="hero-stat-lbl">Claude-Powered</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val">IS/OOS</div>
+          <div class="hero-stat-lbl">Walk-Forward Validated</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val">Any EA</div>
+          <div class="hero-stat-lbl">Works with any .set file</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <div class="features-panel">
+        <div class="features-panel-title">What makes APEX different</div>
+        <div class="features-list">
+
+          <div class="feature-item">
+            <div class="feature-icon-wrap purple">&#129504;</div>
+            <div>
+              <div class="feature-name purple">AI Reasoning</div>
+              <div class="feature-desc">Analyzes results, detects patterns and explains performance in plain language using Claude AI.</div>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon-wrap teal">&#127919;</div>
+            <div>
+              <div class="feature-name teal">Smart Optimization</div>
+              <div class="feature-desc">Finds the best parameters using 3-phase search: broad discovery &rarr; refinement &rarr; out-of-sample validation.</div>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon-wrap blue" style="font-size:0.85rem;font-weight:700;font-family:monospace;color:#60a5fa">&lt;/&gt;</div>
+            <div>
+              <div class="feature-name blue">Strategy Evolution</div>
+              <div class="feature-desc">Suggests improvements and helps evolve your trading systems based on behavioral pattern analysis.</div>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon-wrap green">&#128737;</div>
+            <div>
+              <div class="feature-name green">Robust &amp; Reliable</div>
+              <div class="feature-desc">Built-in validation (IS/OOS/WFV) and sensitivity testing to ensure real market reliability.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="status-pill" id="status-pill">
-    <div class="pulse"></div>
-    <span id="status-text">Ready</span>
-  </div>
-
-  <h1>Find the Best Settings<br>for Any MT5 EA</h1>
-
-  <p class="subtitle">
-    The Smart Optimizer tests dozens of configurations across your full parameter space,
-    validates the winner on unseen data, and delivers a ready-to-use .set file — in under an hour.
-  </p>
-
-  <div class="actions">
-    <a href="/setup" class="btn btn-primary">
-      ⚡ New Optimization
-    </a>
-    <a href="/dashboard" class="btn btn-secondary" id="dashboard-btn">
-      📊 Live Dashboard
-    </a>
-    <a href="/reports" class="btn btn-secondary">
-      📁 View Reports
-    </a>
-  </div>
-
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-val">3</div>
-      <div class="stat-label">Phases</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val" id="stat-runs">20–50</div>
-      <div class="stat-label">Config Tests</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">&lt;1hr</div>
-      <div class="stat-label">Typical Time</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">OOS</div>
-      <div class="stat-label">Validated</div>
-    </div>
-  </div>
+  <footer class="footer">
+    <span>APEX &mdash; AI-Powered EA Optimizer</span>
+    <span>Powered by Claude AI + MetaTrader 5</span>
+  </footer>
 </div>
 
 <script>
-  // Check if optimizer is running
-  fetch('/api/status').then(r => r.json()).then(s => {
-    if (s.state === 'running') {
-      document.getElementById('status-text').textContent = `Running — ${s.phase} (${s.run_count}/${s.total_runs})`;
-      document.getElementById('dashboard-btn').style.background = 'linear-gradient(135deg,#7c6dfa,#5b4fe8)';
-      document.getElementById('dashboard-btn').style.color = 'white';
-    }
-  }).catch(() => {});
+  // Fetch optimizer status and update the live pill
+  fetch('/api/status')
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      var dot = document.getElementById('status-dot');
+      var txt = document.getElementById('status-text');
+      if (s.state === 'running') {
+        dot.className = 'status-dot running';
+        txt.textContent = 'Running: ' + (s.phase || '') + ' (' + (s.run_count || 0) + ' runs)';
+      } else if (s.verdict) {
+        dot.className = 'status-dot';
+        dot.style.background = '#10b981';
+        txt.textContent = 'Last: ' + s.verdict;
+      }
+    })
+    .catch(function() {});
 </script>
 </body>
 </html>

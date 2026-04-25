@@ -1,0 +1,122 @@
+# ── APEX MT5 Optimizer — example config ─────────────────────────────────────
+# Copy this file to `config.yaml` and fill in your values. config.yaml is
+# git-ignored so your secrets stay local.
+#
+#   cp config.example.yaml config.yaml
+#
+# Or set ANTHROPIC_API_KEY as an environment variable and the app will pick it
+# up automatically (overrides whatever is in config.yaml).
+
+ai:
+  enabled: true
+  # Get your key from https://console.anthropic.com/
+  # Leave as-is to use the ANTHROPIC_API_KEY environment variable.
+  anthropic_api_key: ${ANTHROPIC_API_KEY}
+  model: claude-opus-4-7              # claude-opus-4-7 | claude-sonnet-4-6 | claude-haiku-4-5
+  timeout_seconds: 45
+  analyze_every_n_iterations: 1
+
+# ── Strategy thresholds — quality gates a result must clear ────────────────
+thresholds:
+  min_trades: 50
+  min_profit_factor: 1.2
+  min_calmar: 0.35
+  min_wfv_ratio: 0.7
+  max_oos_degradation: 0.3
+  sensitivity_tolerance: 0.3
+
+# ── Scoring weights — how the ranker combines metrics ──────────────────────
+scoring:
+  significance_trades: 150
+  weights:
+    calmar:           0.35
+    profit_factor:    0.20
+    mfe_capture:      0.20
+    session_stability: 0.15
+    recovery_factor:  0.10
+  normalization:
+    calmar:           { lo: 0.0, hi: 4.0 }
+    profit_factor:    { lo: 1.0, hi: 3.5 }
+    recovery_factor:  { lo: 0.0, hi: 6.0 }
+    mfe_capture:      { lo: 0.0, hi: 1.0 }
+    session_stability: { lo: 0.0, hi: 1.0 }
+
+# ── Broker / market context ────────────────────────────────────────────────
+broker:
+  currency: USD
+  deposit:  10000
+  leverage: 100
+  timezone_offset_hours: 2
+  sessions:
+    Asian:    { start: 0,  end: 9  }
+    London:   { start: 9,  end: 18 }
+    LondonNY: { start: 15, end: 18 }
+    NY:       { start: 15, end: 24 }
+
+# ── EA selection (auto-populated when you register an EA in /setup) ────────
+ea:
+  name:      LEGSTECH_EA_V2
+  file:      LEGSTECH_EA_V2
+  symbol:    XAUUSD
+  timeframe: H1
+
+# ── MetaTrader 5 paths ─────────────────────────────────────────────────────
+# Adjust these to match your local MT5 installation.
+mt5:
+  terminal_exe:  C:/Program Files/MetaTrader 5/terminal64.exe
+  appdata_path:  C:/Users/<YOU>/AppData/Roaming/MetaQuotes/Terminal/<HASH>
+  mql5_files_path: C:/Users/<YOU>/AppData/Roaming/MetaQuotes/Tester/<HASH>/Agent-127.0.0.1-3000/MQL5/Files
+  report_subdir: runs
+  tester_model:  4              # 1=Every tick, 2=Real ticks, 3=OHLC, 4=Open prices
+  tester_timeout_seconds: 1800
+  data_readiness_wait_seconds: 10
+  kill_on_start:    true
+  shutdown_terminal: 1
+
+# ── Backtest periods ───────────────────────────────────────────────────────
+periods:
+  train_start:    2022.01.01
+  train_end:      2023.12.31
+  validate_start: 2024.01.01
+  validate_end:   2024.06.30
+  oos_start:      2024.07.01
+  oos_end:        2024.12.31
+
+# ── Optimization tuning ────────────────────────────────────────────────────
+optimization:
+  max_iterations:        50
+  convergence_threshold: 0.04
+  convergence_window:    3
+
+mutation:
+  max_hypotheses_per_cycle: 3
+  dedup_lookback_runs:      10
+  explore_fallback_after:   5
+
+analysis:
+  equity_curve:
+    min_r_squared:      0.7
+    max_flatness_score: 0.5
+  reversal:
+    mfe_threshold_pips: 15.0
+    min_reversal_rate:  0.15
+    permutation_n:      500
+  time_performance:
+    min_trades_per_bucket: 10
+    permutation_n:         1000
+    z_score_threshold:     -1.5
+  entry_exit:
+    poor_entry_quality: 0.4
+    poor_exit_quality:  0.55
+
+# ── Paths ──────────────────────────────────────────────────────────────────
+paths:
+  db:           optimizer.db
+  reports_dir:  reports
+  runs_dir:     runs
+  ea_registry:  ea_registry.yaml
+  log_file:     optimizer.log
+
+logging:
+  level: INFO
+  file:  optimizer.log

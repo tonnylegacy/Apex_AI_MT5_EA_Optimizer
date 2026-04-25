@@ -24,9 +24,33 @@ Reports/
 # Keep the optimizer database (optional — remove this line to commit it)
 optimizer.db
 
-# ── Sensitive Config (DO NOT COMMIT BROKER CREDENTIALS) ──────────────────────
-# config.yaml contains MT5 paths — safe to commit but exclude if it had passwords
-# config.secret.yaml
+# ── Sensitive Config (DO NOT COMMIT — contains API keys) ────────────────────
+# Users copy config.example.yaml → config.yaml and fill in their key locally.
+config.yaml
+.env
+.env.local
+*.secret.yaml
+*.secret.yml
+config.secret.yaml
+
+# ── EA Registry (machine-specific paths) ─────────────────────────────────────
+ea_registry.yaml
+
+# ── Generated set files ──────────────────────────────────────────────────────
+*.set
+!**/templates/*.set
+
+# ── Screenshots scratch (Playwright debug + health-test artifacts) ──────────
+screenshots/health_*.png
+screenshots/health_*.json
+screenshots/debug*.png
+screenshots/playwright_*.png
+screenshots/*.py
+screenshots/crop_*.png
+
+# ── Claude session artifacts ─────────────────────────────────────────────────
+Claude_Code_session*
+.claude/sessions/
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log

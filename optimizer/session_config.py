@@ -5,7 +5,7 @@ Passed from the /setup form → /api/start → pipeline.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict
-from typing import Literal, Optional
+from typing import Literal
 
 
 ObjectiveType = Literal["balanced", "max_profit", "min_drawdown"]
@@ -42,6 +42,13 @@ class SessionConfig:
     # Phase 1 sample count (derived from budget, not user-set directly)
     phase1_samples: int = 20
 
+    # ── Autonomous AI Loop settings ───────────────────────────────────────────
+    autonomous_mode:           bool  = False  # Replace Phase 2 with AI-guided loop
+    autonomous_max_iterations: int   = 10     # Max AI-directed iterations
+    target_profit_factor:      float = 1.5    # Stop when PF ≥ this
+    target_max_drawdown_pct:   float = 20.0   # Stop when DD ≤ this %
+    target_min_calmar:         float = 0.5    # Stop when Calmar ≥ this
+
     # ── Derived helpers ───────────────────────────────────────────────────────
 
     def derive_samples(self, seconds_per_run: float = 75.0) -> None:
@@ -66,7 +73,8 @@ class SessionConfig:
 
     @property
     def total_budget_runs(self) -> int:
-        return self.phase1_samples + self.phase2_samples + self.phase3_samples
+        phase2 = self.autonomous_max_iterations if self.autonomous_mode else self.phase2_samples
+        return self.phase1_samples + phase2 + self.phase3_samples
 
     # ── Scoring weights based on objective ───────────────────────────────────
 
@@ -99,6 +107,13 @@ class SessionConfig:
         def i(key, default=0):
             try: return int(form.get(key, default))
             except (ValueError, TypeError): return default
+        def f(key, default=0.0):
+            try: return float(form.get(key, default))
+            except (ValueError, TypeError): return default
+        def b(key):
+            v = form.get(key, False)
+            if isinstance(v, bool): return v
+            return str(v).lower() in ("true", "1", "yes", "on")
 
         cfg = cls(
             ea_name         = s("ea_name", "LEGSTECH_EA_V2"),
@@ -111,6 +126,12 @@ class SessionConfig:
             objective       = s("objective", "balanced"),
             budget_minutes  = i("budget_minutes", 60),
             selected_params = form.get("selected_params", []),
+            # Autonomous loop
+            autonomous_mode           = b("autonomous_mode"),
+            autonomous_max_iterations = i("autonomous_max_iterations", 10),
+            target_profit_factor      = f("target_profit_factor", 1.5),
+            target_max_drawdown_pct   = f("target_max_drawdown_pct", 20.0),
+            target_min_calmar         = f("target_min_calmar", 0.5),
         )
         cfg.derive_samples()
         return cfg

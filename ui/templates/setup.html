@@ -370,6 +370,161 @@
       </div>
     </div>
 
+    <!-- Add New EA -->
+    <div style="margin-top:0.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+      <button type="button" onclick="showAddEAModal()"
+        style="background:none;border:1px dashed rgba(79,70,229,0.4);color:#7c6dfa;padding:0.4rem 1rem;border-radius:8px;font-size:0.8rem;cursor:pointer;font-family:inherit;transition:all 0.2s"
+        onmouseover="this.style.borderColor='#7c6dfa'" onmouseout="this.style.borderColor='rgba(79,70,229,0.4)'">
+        + Register New EA
+      </button>
+      <button type="button" id="scan-btn" onclick="scanForEAs()"
+        style="background:none;border:1px dashed rgba(0,212,170,0.35);color:#00d4aa;padding:0.4rem 1rem;border-radius:8px;font-size:0.8rem;cursor:pointer;font-family:inherit;transition:all 0.2s;display:flex;align-items:center;gap:0.4rem"
+        onmouseover="this.style.borderColor='#00d4aa'" onmouseout="this.style.borderColor='rgba(0,212,170,0.35)'">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Scan for EAs
+      </button>
+      <span id="scan-status" style="font-size:0.78rem;color:#64748b"></span>
+    </div>
+
+    <!-- Add EA Modal -->
+    <div id="add-ea-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:50;align-items:center;justify-content:center;backdrop-filter:blur(6px)">
+      <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:2rem;width:540px;max-width:95vw;max-height:90vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+          <div>
+            <h3 style="font-size:1.05rem;font-weight:700;color:#e2e8f0">Register New EA</h3>
+            <p style="font-size:0.78rem;color:#64748b;margin-top:0.2rem">Pick a detected EA or enter paths manually</p>
+          </div>
+          <button onclick="hideAddEAModal()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.4rem;line-height:1">&#10005;</button>
+        </div>
+
+        <!-- Detected EAs picker (shown after scan) -->
+        <div id="detected-section" style="display:none;margin-bottom:1.25rem">
+          <div style="font-size:0.78rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#00d4aa;margin-bottom:0.6rem">
+            Detected EAs — click to auto-fill
+          </div>
+          <div id="detected-list" style="display:flex;flex-direction:column;gap:0.4rem;max-height:180px;overflow-y:auto;padding-right:4px"></div>
+          <div style="margin:1rem 0;border-top:1px solid rgba(255,255,255,0.06)"></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <div class="field">
+            <label>EA Display Name</label>
+            <input type="text" id="new-ea-name" placeholder="e.g. MyEA_v2">
+          </div>
+          <div class="field">
+            <label>EA File Name (without .ex5)</label>
+            <input type="text" id="new-ea-file" placeholder="e.g. MyEA_v2">
+          </div>
+          <div class="field">
+            <label style="display:flex;align-items:center;justify-content:space-between">
+              <span>.set Template Path</span>
+              <span id="set-match-badge" style="display:none;font-size:0.7rem;background:rgba(0,212,170,0.15);color:#00d4aa;padding:2px 8px;border-radius:999px;font-weight:600">✓ auto-matched</span>
+            </label>
+            <input type="text" id="new-ea-set" placeholder="C:\MT5 Set files\MyEA.set">
+            <!-- Set file picker (shown after scan) -->
+            <select id="set-picker" style="display:none;margin-top:0.4rem;font-size:0.82rem" onchange="onSetPick()">
+              <option value="">— pick from detected .set files —</option>
+            </select>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Symbol</label>
+              <select id="new-ea-symbol">
+                <option value="XAUUSD">XAUUSD (Gold)</option>
+                <option value="EURUSD">EURUSD</option>
+                <option value="GBPUSD">GBPUSD</option>
+                <option value="USDJPY">USDJPY</option>
+                <option value="USDCAD">USDCAD</option>
+                <option value="AUDUSD">AUDUSD</option>
+                <option value="BTCUSD">BTCUSD</option>
+                <option value="NASDAQ">NASDAQ</option>
+                <option value="US30">US30</option>
+                <option value="DE40">DE40</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Timeframe</label>
+              <select id="new-ea-tf">
+                <option value="M5">M5</option>
+                <option value="M15">M15</option>
+                <option value="M30">M30</option>
+                <option value="H1" selected>H1</option>
+                <option value="H4">H4</option>
+                <option value="D1">D1</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:0.75rem;margin-top:1.5rem;justify-content:flex-end">
+          <button type="button" onclick="hideAddEAModal()"
+            style="padding:0.6rem 1.25rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;border-radius:8px;cursor:pointer;font-family:inherit">
+            Cancel
+          </button>
+          <button type="button" onclick="registerNewEA()"
+            style="padding:0.6rem 1.5rem;background:linear-gradient(135deg,#4f46e5,#7c6dfa);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit">
+            Register EA
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Autonomous AI Loop -->
+    <div style="border:1px solid rgba(0,212,170,0.25);border-radius:12px;padding:1.25rem 1.5rem;background:rgba(0,212,170,0.04);margin-top:0.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+        <div>
+          <div style="display:flex;align-items:center;gap:0.6rem">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span style="font-size:0.88rem;font-weight:700;color:#e2e8f0">Autonomous AI Loop</span>
+            <span style="font-size:0.62rem;background:rgba(0,212,170,0.18);color:#00d4aa;padding:2px 7px;border-radius:999px;font-weight:700;letter-spacing:0.05em">NEW</span>
+          </div>
+          <div style="font-size:0.72rem;color:#64748b;margin-top:0.25rem">
+            AI analyzes results and evolves parameters each iteration until targets are met
+          </div>
+        </div>
+        <!-- Toggle -->
+        <button type="button" class="settings-toggle" id="autonomous-toggle"
+          onclick="toggleAutonomous(this)"
+          style="width:44px;height:24px;background:rgba(255,255,255,0.12);border-radius:999px;border:none;cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0">
+        </button>
+      </div>
+
+      <!-- Expanded controls (hidden when off) -->
+      <div id="autonomous-controls" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:0.75rem">
+          <div class="field" style="margin:0">
+            <label>Max Iterations</label>
+            <input type="number" name="autonomous_max_iterations" id="ai-max-iter"
+              value="10" min="3" max="50" step="1" class="input" style="margin-top:0.3rem">
+          </div>
+          <div class="field" style="margin:0">
+            <label>Target Profit Factor</label>
+            <input type="number" name="target_profit_factor" id="ai-target-pf"
+              value="1.5" min="1.0" max="5.0" step="0.1" class="input" style="margin-top:0.3rem">
+          </div>
+          <div class="field" style="margin:0">
+            <label>Target Max Drawdown %</label>
+            <input type="number" name="target_max_drawdown_pct" id="ai-target-dd"
+              value="20" min="5" max="50" step="1" class="input" style="margin-top:0.3rem">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:0.75rem">
+          <div class="field" style="margin:0">
+            <label>Target Min Calmar</label>
+            <input type="number" name="target_min_calmar" id="ai-target-calmar"
+              value="0.5" min="0.1" max="5.0" step="0.05" class="input" style="margin-top:0.3rem">
+          </div>
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:0.6rem 0.9rem;font-size:0.72rem;color:#64748b;line-height:1.55">
+            Loop stops early when <strong style="color:#e2e8f0">ALL</strong> targets are met simultaneously.
+            Requires an Anthropic API key configured in Settings.
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden inputs for form submission -->
+      <input type="hidden" name="autonomous_mode" id="autonomous-mode-val" value="false">
+    </div>
+
     <!-- Submit -->
     <div class="submit-row">
       <button type="submit" class="btn-start" id="start-btn">
@@ -419,13 +574,242 @@
     body.classList.toggle('open');
   }
 
+  let scannedData = null;  // cache from /api/ea/scan
+
+  function showAddEAModal() {
+    document.getElementById('add-ea-modal').style.display = 'flex';
+    // If we already scanned, populate the detected section
+    if (scannedData) populateDetected(scannedData);
+  }
+
+  function hideAddEAModal() {
+    document.getElementById('add-ea-modal').style.display = 'none';
+  }
+
+  async function scanForEAs() {
+    const btn = document.getElementById('scan-btn');
+    const status = document.getElementById('scan-status');
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+    status.textContent = 'Scanning...';
+    try {
+      const resp = await fetch('/api/ea/scan');
+      const data = await resp.json();
+      scannedData = data;
+      const count = data.ex5.length;
+      const setCount = data.set.length;
+      status.style.color = '#00d4aa';
+      status.textContent = `Found ${count} EA${count !== 1 ? 's' : ''} · ${setCount} .set file${setCount !== 1 ? 's' : ''}`;
+      showAddEAModal();
+    } catch(e) {
+      status.style.color = '#ef4444';
+      status.textContent = 'Scan failed: ' + e.message;
+    } finally {
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+    }
+  }
+
+  function populateDetected(data) {
+    const section = document.getElementById('detected-section');
+    const list    = document.getElementById('detected-list');
+    const picker  = document.getElementById('set-picker');
+
+    if (!data.ex5.length && !data.set.length) return;
+
+    // Build EA pill list
+    list.innerHTML = '';
+    data.ex5.forEach(ea => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0.85rem;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;cursor:pointer;font-family:inherit;width:100%;text-align:left;transition:all 0.15s';
+      pill.onmouseover = () => { pill.style.background='rgba(124,109,250,0.12)'; pill.style.borderColor='rgba(124,109,250,0.4)'; };
+      pill.onmouseout  = () => { pill.style.background='rgba(255,255,255,0.04)'; pill.style.borderColor='rgba(255,255,255,0.08)'; };
+      pill.innerHTML = `
+        <span style="font-size:0.85rem;font-weight:600;color:#e2e8f0">${ea.name}</span>
+        ${ea.suggested_set
+          ? '<span style="font-size:0.7rem;background:rgba(0,212,170,0.15);color:#00d4aa;padding:2px 8px;border-radius:999px;font-weight:600">.set matched</span>'
+          : '<span style="font-size:0.7rem;color:#64748b">no .set matched</span>'
+        }
+      `;
+      pill.onclick = () => autoFillFromEA(ea);
+      list.appendChild(pill);
+    });
+
+    // Build .set picker
+    picker.innerHTML = '<option value="">— pick from detected .set files —</option>';
+    data.set.forEach(s => {
+      const opt = new Option(s.filename, s.path);
+      picker.add(opt);
+    });
+    picker.style.display = data.set.length ? 'block' : 'none';
+
+    section.style.display = 'block';
+  }
+
+  function autoFillFromEA(ea) {
+    document.getElementById('new-ea-name').value = ea.name;
+    document.getElementById('new-ea-file').value = ea.name;
+    if (ea.suggested_set) {
+      document.getElementById('new-ea-set').value = ea.suggested_set;
+      document.getElementById('set-match-badge').style.display = 'inline';
+    } else {
+      document.getElementById('new-ea-set').value = '';
+      document.getElementById('set-match-badge').style.display = 'none';
+    }
+    // Scroll to bottom of modal to show form fields
+    document.getElementById('add-ea-modal').querySelector('div').scrollTop = 999;
+  }
+
+  function onSetPick() {
+    const val = document.getElementById('set-picker').value;
+    if (val) {
+      document.getElementById('new-ea-set').value = val;
+      document.getElementById('set-match-badge').style.display = 'inline';
+    }
+  }
+
+  async function registerNewEA() {
+    const name = document.getElementById('new-ea-name').value.trim();
+    const file = document.getElementById('new-ea-file').value.trim();
+    const set  = document.getElementById('new-ea-set').value.trim();
+    const symbol    = document.getElementById('new-ea-symbol').value;
+    const timeframe = document.getElementById('new-ea-tf').value;
+
+    if (!name || !set) {
+      alert('EA Name and .set file path are required.');
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/ea/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name, ex5_file: file || name, set_template: set, symbol, timeframe, mode: 'generic' }),
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        hideAddEAModal();
+        // Add to dropdown immediately without reload
+        const sel = document.getElementById('ea_name');
+        const existing = [...sel.options].find(o => o.value === name);
+        if (!existing) {
+          const opt = new Option(name, name);
+          sel.add(opt);
+        }
+        sel.value = name;
+        document.getElementById('scan-status').textContent = `"${name}" registered ✓`;
+        document.getElementById('scan-status').style.color = '#00d4aa';
+        // Reload params for this EA
+        if (typeof loadEAParams === 'function') loadEAParams(name);
+      } else {
+        alert('Error: ' + (result.error || 'Registration failed'));
+      }
+    } catch(e) {
+      alert('Network error: ' + e.message);
+    }
+  }
+
+  async function loadEAParams(eaName) {
+    const grid = document.getElementById('param-grid');
+    if (!grid) return;
+    grid.innerHTML = '<span style="color:#64748b;font-size:0.82rem">Loading parameters...</span>';
+    try {
+      const resp = await fetch('/api/ea_params?ea=' + encodeURIComponent(eaName));
+      const params = await resp.json();
+      if (params.error) { grid.innerHTML = `<span style="color:#ef4444;font-size:0.82rem">${params.error}</span>`; return; }
+      if (!params.length) { grid.innerHTML = '<span style="color:#64748b;font-size:0.82rem">No optimizable parameters found in .set file.</span>'; return; }
+      grid.innerHTML = params.map(p => `
+        <label class="param-check">
+          <input type="checkbox" name="selected_params" value="${p.name}" ${p.optimize ? 'checked' : ''}>
+          <span title="${p.range || ''}">${p.name.replace('Inp','')}</span>
+        </label>
+      `).join('');
+    } catch(e) {
+      grid.innerHTML = `<span style="color:#ef4444;font-size:0.82rem">Error loading params: ${e.message}</span>`;
+    }
+  }
+
+  // Reload params + symbol/timeframe when EA selection changes
+  document.getElementById('ea_name').addEventListener('change', function() {
+    loadEAParams(this.value);
+  });
+
+  function toggleAutonomous(btn) {
+    const isOn = btn.style.background === 'rgb(79, 70, 229)' || btn.classList.contains('on');
+    if (isOn) {
+      btn.style.background = 'rgba(255,255,255,0.12)';
+      btn.classList.remove('on');
+      btn.querySelector('span') && (btn.querySelector('span').style.transform = '');
+      document.getElementById('autonomous-controls').style.display = 'none';
+      document.getElementById('autonomous-mode-val').value = 'false';
+    } else {
+      btn.style.background = '#4f46e5';
+      btn.classList.add('on');
+      document.getElementById('autonomous-controls').style.display = 'block';
+      document.getElementById('autonomous-mode-val').value = 'true';
+    }
+    // Maintain the ::after pseudo-element position via class
+    btn.style.setProperty('--toggle-x', isOn ? '0px' : '20px');
+  }
+
+  // ── Toast helper for inline validation feedback ────────────────────────
+  function showSetupError(msg) {
+    let toast = document.getElementById('setup-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'setup-toast';
+      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(239,68,68,0.95);color:white;padding:0.8rem 1.2rem;border-radius:8px;font-size:0.85rem;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:380px;line-height:1.4;';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.display = 'block';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 5000);
+  }
+
+  function validateSetup(data) {
+    if (!data.ea_name || !data.ea_name.trim()) {
+      return 'Please select an EA before starting.';
+    }
+    if (!data.symbol || !data.timeframe) {
+      return 'Symbol and timeframe are required.';
+    }
+    const ds = (s) => new Date((s || '').replace(/\./g, '-'));
+    const ts = ds(data.train_start), te = ds(data.train_end);
+    const vs = ds(data.val_start),   ve = ds(data.val_end);
+    if (isNaN(ts) || isNaN(te) || isNaN(vs) || isNaN(ve)) {
+      return 'All four dates must be valid (YYYY-MM-DD).';
+    }
+    if (ts >= te) return 'Training start must come before training end.';
+    if (vs >= ve) return 'Validation start must come before validation end.';
+    if (vs < te) return 'Validation period should start after the training period (walk-forward).';
+    if (data.budget_minutes < 1) return 'Time budget must be at least 1 minute.';
+    if (!data.selected_params || data.selected_params.length === 0) {
+      return 'Pick at least one parameter to optimize.';
+    }
+    if (data.autonomous_mode) {
+      if (data.autonomous_max_iterations < 1 || data.autonomous_max_iterations > 100) {
+        return 'AI max iterations must be between 1 and 100.';
+      }
+      if (data.target_profit_factor < 1) return 'Target profit factor must be ≥ 1.';
+      if (data.target_max_drawdown_pct <= 0 || data.target_max_drawdown_pct > 100) {
+        return 'Target max drawdown must be between 0 and 100 (%).';
+      }
+    }
+    return null;  // valid
+  }
+
   document.getElementById('setup-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('start-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span>⏳</span> Starting...';
+    const restoreBtn = () => {
+      btn.disabled = false;
+      btn.innerHTML = '<span>⚡</span> Start Optimization';
+    };
 
     const form = e.target;
+    const autonomousOn = document.getElementById('autonomous-mode-val').value === 'true';
     const data = {
       ea_name:        form.ea_name.value,
       symbol:         form.symbol.value,
@@ -438,7 +822,22 @@
       budget_minutes: parseInt(form.budget_minutes.value),
       selected_params: [...form.querySelectorAll('input[name=selected_params]:checked')]
                          .map(cb => cb.value),
+      // Autonomous loop
+      autonomous_mode:           autonomousOn,
+      autonomous_max_iterations: parseInt(document.getElementById('ai-max-iter').value) || 10,
+      target_profit_factor:      parseFloat(document.getElementById('ai-target-pf').value) || 1.5,
+      target_max_drawdown_pct:   parseFloat(document.getElementById('ai-target-dd').value) || 20.0,
+      target_min_calmar:         parseFloat(document.getElementById('ai-target-calmar').value) || 0.5,
     };
+
+    const validationError = validateSetup(data);
+    if (validationError) {
+      showSetupError(validationError);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Starting...';
 
     try {
       const resp = await fetch('/api/start', {
@@ -450,14 +849,12 @@
       if (result.ok) {
         window.location.href = '/dashboard';
       } else {
-        alert('Could not start: ' + (result.msg || 'Unknown error'));
-        btn.disabled = false;
-        btn.innerHTML = '<span>⚡</span> Start Optimization';
+        showSetupError('Could not start: ' + (result.msg || 'Unknown error'));
+        restoreBtn();
       }
     } catch(err) {
-      alert('Network error: ' + err.message);
-      btn.disabled = false;
-      btn.innerHTML = '<span>⚡</span> Start Optimization';
+      showSetupError('Network error: ' + err.message);
+      restoreBtn();
     }
   });
 </script>

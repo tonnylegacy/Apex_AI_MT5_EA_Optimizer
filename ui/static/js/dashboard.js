@@ -1,466 +1,1753 @@
 /**
- * dashboard.js — Smart Optimizer Live Dashboard
- * Handles all SocketIO events from the 3-phase pipeline.
+ * dashboard.js — APEX AI-Powered EA Optimizer
+ * Handles all SocketIO events, chart rendering, and UI state.
  */
 
-// ── Chart Setup ───────────────────────────────────────────────────────────────
-const ctx   = document.getElementById('scoreChart').getContext('2d');
-const chart = new Chart(ctx, {
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════════════════════════════════════ */
+
+function el(id) { return document.getElementById(id); }
+
+function fmtMoney(v) {
+  const n = parseFloat(v) || 0;
+  const abs = Math.abs(n);
+  let s;
+  if (abs >= 1000000) s = (n / 1000000).toFixed(2) + 'M';
+  else if (abs >= 1000) s = (n / 1000).toFixed(1) + 'k';
+  else s = n.toFixed(2);
+  return (n >= 0 ? '$' : '-$') + (n < 0 ? s.replace('-', '') : s);
+}
+
+function fmtPct(v, decimals) {
+  return (parseFloat(v) || 0).toFixed(decimals != null ? decimals : 2) + '%';
+}
+
+function fmtTime(secs) {
+  const s = Math.floor(secs);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+  return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+}
+
+function nowStr() {
+  return new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function safe(id, fn) {
+  const e = el(id);
+  if (e) fn(e);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   GLOBAL STATE
+══════════════════════════════════════════════════════════════════════ */
+
+const state = {
+  runs: 0,
+  isRunning: false,
+  startTime: null,
+  elapsedTimer: null,
+  logCount: 0,
+  bestProfit: null,
+  sparkData: { profit: [], dd: [], pf: [], trades: [], runs: [] },
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   CHART.JS DEFAULTS
+══════════════════════════════════════════════════════════════════════ */
+
+Chart.defaults.color = '#64748b';
+Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+Chart.defaults.font.size = 11;
+
+/* ── Equity Curve ─────────────────────────────────────────────────── */
+
+const equityChart = new Chart(el('equityChart').getContext('2d'), {
   type: 'line',
   data: {
     labels: [],
     datasets: [
       {
-        label: 'Session Score',
+        label: 'Equity',
         data: [],
-        borderColor: '#00d4aa',
-        backgroundColor: 'rgba(0,212,170,0.08)',
-        borderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: ctx => {
-          const v = ctx.raw;
-          return (v !== null && v > 0) ? '#00d4aa' : '#ef4444';
+        borderColor: '#4f46e5',
+        backgroundColor: (ctx) => {
+          const { ctx: c, chartArea } = ctx.chart;
+          if (!chartArea) return 'transparent';
+          const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          g.addColorStop(0, 'rgba(79,70,229,0.22)');
+          g.addColorStop(1, 'rgba(79,70,229,0)');
+          return g;
         },
-        tension: 0.35,
-        fill: true,
+        borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#4f46e5', tension: 0.4, fill: true,
       },
       {
-        label: 'Calmar Ratio',
+        label: 'Balance',
         data: [],
-        borderColor: '#7c6dfa',
+        borderColor: '#00d4aa',
+        backgroundColor: 'transparent',
         borderWidth: 1.5,
-        pointRadius: 2,
-        borderDash: [4, 3],
-        tension: 0.35,
-        fill: false,
-      }
-    ]
+        borderDash: [5, 4],
+        pointRadius: 0, pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#00d4aa', tension: 0.4, fill: false,
+      },
+    ],
   },
   options: {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     animation: { duration: 400 },
+    interaction: { intersect: false, mode: 'index' },
     plugins: {
-      legend: {
-        labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 }, boxWidth: 12 }
-      },
+      legend: { display: false },
       tooltip: {
-        backgroundColor: '#141b27',
-        borderColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
-        titleColor: '#e2e8f0',
-        bodyColor: '#94a3b8',
-        callbacks: {
-          label: ctx => {
-            if (ctx.dataset.label === 'Session Score') return ` Score: ${(ctx.raw || 0).toFixed(4)}`;
-            return ` Calmar: ${(ctx.raw || 0).toFixed(3)}`;
-          }
-        }
-      }
+        backgroundColor: '#0f1629', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+        padding: 10, titleColor: '#94a3b8', bodyColor: '#e2e8f0',
+        callbacks: { label: (ctx) => ' ' + ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2) },
+      },
     },
     scales: {
-      x: { ticks: { color: '#475569', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-      y: { min: 0, max: 1, ticks: { color: '#475569', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
-    }
-  }
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 8, maxRotation: 0, color: '#475569', font: { size: 10 } }, border: { display: false } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 6, color: '#475569', font: { size: 10 }, callback: (v) => '$' + v.toFixed(0) }, border: { display: false } },
+    },
+  },
 });
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let startTs    = null;
-let elapsedTimer = null;
-let findingsCount = 0;
-let runCount      = 0;
-let bestScore     = 0;
-let candCount     = 0;
-let totalRuns     = 0;
+/* ── Drawdown Chart ───────────────────────────────────────────────── */
 
-// ── SocketIO ──────────────────────────────────────────────────────────────────
-const socket = io();
-
-socket.on('connect', () => addLog('info', '🔗 Connected to optimizer server'));
-socket.on('disconnect', () => addLog('warning', '⚡ Disconnected from server'));
-
-// Status sync on connect
-socket.on('status_sync', (s) => {
-  setStatus(s.state, s.phase);
-  if (s.ea_name && s.symbol && s.timeframe) {
-    document.getElementById('session-label').textContent =
-      `${s.ea_name} · ${s.symbol} · ${s.timeframe}`;
-  }
-  totalRuns = s.total_runs || 0;
-  updateRunCount(s.run_count || 0);
-  if (s.state === 'running') {
-    document.getElementById('progress-wrap').style.display = '';
-    document.getElementById('btn-stop').classList.remove('hidden');
-  }
+const drawdownChart = new Chart(el('drawdownChart').getContext('2d'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Drawdown',
+      data: [],
+      borderColor: '#ef4444',
+      backgroundColor: (ctx) => {
+        const { ctx: c, chartArea } = ctx.chart;
+        if (!chartArea) return 'transparent';
+        const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+        g.addColorStop(0, 'rgba(239,68,68,0.35)');
+        g.addColorStop(1, 'rgba(239,68,68,0.02)');
+        return g;
+      },
+      borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, tension: 0.4, fill: true,
+    }],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 400 },
+    interaction: { intersect: false, mode: 'index' },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0f1629', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+        padding: 8, titleColor: '#94a3b8', bodyColor: '#ef4444',
+        callbacks: { label: (ctx) => ' Drawdown: ' + ctx.parsed.y.toFixed(2) + '%' },
+      },
+    },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 8, maxRotation: 0, color: '#475569', font: { size: 10 } }, border: { display: false } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 4, color: '#475569', font: { size: 10 }, callback: (v) => v.toFixed(1) + '%' }, border: { display: false } },
+    },
+  },
 });
 
-socket.on('status_change', (d) => {
-  setStatus(d.state, d.phase);
-  if (d.state === 'running') {
-    startTs = Date.now();
-    startElapsedTimer();
-    document.getElementById('progress-wrap').style.display = '';
-    document.getElementById('btn-stop').classList.remove('hidden');
-  }
-  if (d.state === 'idle' || d.state === 'stopping') {
-    document.getElementById('btn-stop').classList.add('hidden');
-  }
-});
+/* ── Sparklines ───────────────────────────────────────────────────── */
 
-// Each run completes
-socket.on('run_complete', (d) => {
-  updateRunCount((d.run_number != null) ? null : runCount + 1, d);
+const sparklineCharts = {};
 
-  // Update metrics
-  const profit = d.net_profit || 0;
-  el('m-profit').textContent  = `$${profit.toFixed(0)}`;
-  el('m-profit').className    = 'metric-val ' + (profit >= 0 ? 'profit-pos' : 'profit-neg');
-  el('m-calmar').textContent  = (d.calmar || 0).toFixed(3);
-  el('m-pf').textContent      = d.profit_factor != null ? (d.profit_factor).toFixed(2) : '—';
-  el('m-dd').textContent      = d.max_drawdown != null ? `${d.max_drawdown.toFixed(1)}%` : '—';
-  el('m-wr').textContent      = d.win_rate != null ? `${d.win_rate.toFixed(1)}%` : '—';
-  el('m-trades').textContent  = d.total_trades != null ? d.total_trades : '—';
-  el('current-run-id').textContent = d.run_id || '—';
-
-  // Session score (0–1)
-  const score    = d.score || 0;
-  const scoreStr = score.toFixed(4);
-  el('m-score').textContent = d.passing ? scoreStr : 'failing';
-  el('score-bar-fill').style.width = `${Math.round(score * 100)}%`;
-
-  // Update best score header
-  if (d.passing && score > bestScore) {
-    bestScore = score;
-    el('hdr-score').textContent = scoreStr;
-  }
-
-  // Add to chart
-  const label = d.run_id ? d.run_id.slice(-6) : `${runCount}`;
-  chart.data.labels.push(label);
-  chart.data.datasets[0].data.push(d.passing ? score : 0);
-
-  // Calmar normalized to 0-1 range (cap at 3)
-  const calmarNorm = Math.min(Math.max((d.calmar || 0) / 3.0, 0), 1);
-  chart.data.datasets[1].data.push(d.passing ? calmarNorm : 0);
-
-  chart.update('none');
-  el('chart-badge').textContent = `${chart.data.labels.length} runs`;
-
-  // Progress bar
-  if (d.progress_pct != null) {
-    el('progress-bar-fill').style.width = `${d.progress_pct}%`;
-  }
-  if (d.phase) updatePhaseLabel(d.phase, d.run_number, d.total);
-  if (d.budget_summary) el('progress-budget').textContent = d.budget_summary;
-
-  // Add to best configs panel if profitable
-  if (d.passing) {
-    addCandidate(d);
-  }
-});
-
-// Phase start
-socket.on('phase_start', (d) => {
-  const labels = { phase1: 'Phase 1: Broad Discovery', phase2: 'Phase 2: Refinement', phase3: 'Phase 3: Validation' };
-  el('progress-phase').textContent = labels[d.phase] || d.phase;
-  el('progress-count').textContent = `0 / ${d.total || '?'}`;
-  setPhaseActive(d.phase);
-  if (d.phase === 'phase2') {
-    markPhaseDone('phase1');
-    el('phase1-results-card').style.display = '';
-  }
-  if (d.phase === 'phase3') {
-    markPhaseDone('phase2');
-  }
-});
-
-// Phase 1 complete — show results table
-socket.on('phase1_complete', (d) => {
-  el('phase1-results-card').style.display = '';
-  el('phase1-badge').textContent = `${d.n_passing}/${d.total_tested} profitable`;
-  renderPhase1Table(d.top_results || []);
-  addLog('info', `━━ Phase 1 done: ${d.n_passing}/${d.total_tested} profitable configs found. Starting refinement...`);
-});
-
-// Phase 2 complete
-socket.on('phase2_complete', (d) => {
-  addLog('success', `✅ Phase 2 done. Best: ${d.best_run_id} · Profit: $${d.best_profit} · Calmar: ${d.best_calmar}`);
-});
-
-// No profitable configuration found
-socket.on('no_profitable_config', (d) => {
-  el('no-profit-banner').style.display = '';
-  el('no-profit-msg').textContent = d.msg || 'No profitable configuration found.';
-  el('progress-wrap').style.display = 'none';
-  addLog('error', '❌ ' + (d.msg || 'No profitable config found'));
-});
-
-// Optimization complete — show verdict
-socket.on('optimization_complete', (d) => {
-  markPhaseDone('phase3');
-  markPhaseDone('done');
-  setStatus('idle', 'done');
-  stopElapsedTimer();
-
-  el('progress-wrap').style.display = 'none';
-  el('btn-stop').classList.add('hidden');
-
-  renderVerdict(d);
-  addLog(d.verdict === 'RECOMMENDED' ? 'success' : 'warning',
-    `🏁 Optimization complete! ${d.verdict} · `+
-    `Profit: $${d.net_profit} · Calmar: ${d.calmar} · Runs: ${d.total_runs} · ${d.elapsed_min}min`
-  );
-});
-
-// Log
-socket.on('log', (d) => addLog(d.level, d.msg));
-
-// Error
-socket.on('error', (d) => addLog('error', '❌ ' + (d.msg || 'Unknown error')));
-
-
-// ── Actions ───────────────────────────────────────────────────────────────────
-
-function stopOptimizer() {
-  fetch('/api/stop', { method: 'POST' }).catch(() => {});
-  addLog('warning', '⏹ Stop requested...');
-}
-
-function clearLog() {
-  el('log-feed').innerHTML = '';
-}
-
-
-// ── Rendering helpers ─────────────────────────────────────────────────────────
-
-function renderPhase1Table(results) {
-  const tbody = el('phase1-tbody');
-  tbody.innerHTML = '';
-  results.forEach((r, i) => {
-    const tr = document.createElement('tr');
-    if (i === 0) tr.className = 'rank-1';
-    const profitClass = r.net_profit >= 0 ? 'profit-pos' : 'profit-neg';
-    const badge = r.passing
-      ? `<span class="badge-pass">✓ pass</span>`
-      : `<span class="badge-fail">fail</span>`;
-    tr.innerHTML = `
-      <td>#${r.rank || i+1} ${i === 0 ? '🥇' : ''}</td>
-      <td class="${profitClass}">$${(r.net_profit||0).toFixed(0)}</td>
-      <td>${(r.calmar||0).toFixed(3)}</td>
-      <td>${(r.profit_factor||0).toFixed(2)}</td>
-      <td>${(r.win_rate||0).toFixed(1)}%</td>
-      <td>${(r.max_drawdown||0).toFixed(1)}%</td>
-      <td>${r.total_trades||0}</td>
-      <td>${(r.score||0).toFixed(4)}</td>
-    `;
-    tbody.appendChild(tr);
+function createSparkline(canvasId, color, fillColor) {
+  const canvas = el(canvasId);
+  if (!canvas) return null;
+  return new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: fillColor || 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: !!fillColor }] },
+    options: { responsive: false, animation: { duration: 250 }, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } },
   });
 }
 
-function renderVerdict(d) {
-  const banner = el('verdict-banner');
-  const icons  = { RECOMMENDED: '✅', RISKY: '⚠️', NOT_RELIABLE: '❌' };
-  const labels = {
+function initSparklines() {
+  sparklineCharts.profit = createSparkline('spark-profit', '#10b981', 'rgba(16,185,129,0.12)');
+  sparklineCharts.dd     = createSparkline('spark-dd',     '#ef4444', 'rgba(239,68,68,0.12)');
+  sparklineCharts.pf     = createSparkline('spark-pf',     '#f59e0b', 'rgba(245,158,11,0.10)');
+  sparklineCharts.trades = createSparkline('spark-trades',  '#00d4aa', 'rgba(0,212,170,0.10)');
+  sparklineCharts.runs   = createSparkline('spark-runs',   '#7c6dfa', 'rgba(124,109,250,0.10)');
+}
+
+function pushSparkData(key, value) {
+  const arr = state.sparkData[key];
+  arr.push(value);
+  if (arr.length > 20) arr.shift();
+  const c = sparklineCharts[key];
+  if (!c) return;
+  c.data.labels = arr.map((_, i) => i);
+  c.data.datasets[0].data = arr;
+  c.update('none');
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   METRIC CARDS
+══════════════════════════════════════════════════════════════════════ */
+
+function updateMetricCards(d) {
+  const profit = parseFloat(d.net_profit  || d.best_net_profit  || 0);
+  const maxDD  = parseFloat(d.max_drawdown || d.best_max_drawdown || d.max_dd || 0);
+  const pf     = parseFloat(d.profit_factor || d.best_pf || d.pf || 0);
+  const trades = parseInt(d.total_trades  || d.best_total_trades || d.trades || 0, 10);
+
+  // Net Profit
+  safe('m-net-profit', e => { e.textContent = fmtMoney(profit); });
+  if (state.bestProfit === null) state.bestProfit = profit;
+  const delta = state.bestProfit !== 0 ? ((profit - state.bestProfit) / Math.abs(state.bestProfit) * 100) : 0;
+  safe('m-net-profit-delta-val', e => { e.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%'; });
+  const arrow = el('m-net-profit-delta') && el('m-net-profit-delta').querySelector('span:first-child');
+  if (arrow) { arrow.textContent = delta >= 0 ? '↑' : '↓'; arrow.className = delta >= 0 ? 'delta-up' : 'delta-down'; }
+  pushSparkData('profit', profit);
+
+  // Max Drawdown
+  safe('m-max-dd', e => { e.textContent = fmtPct(maxDD); });
+  safe('max-dd-badge', e => { e.textContent = 'Max DD: ' + fmtPct(maxDD, 1); });
+  pushSparkData('dd', maxDD);
+
+  // Profit Factor
+  safe('m-pf', e => { e.textContent = pf.toFixed(2); });
+  safe('m-pf-quality', e => {
+    if (pf >= 2)       { e.textContent = 'Excellent'; e.style.color = 'var(--green)'; }
+    else if (pf >= 1.5){ e.textContent = 'Good';      e.style.color = 'var(--teal)'; }
+    else if (pf >= 1)  { e.textContent = 'Marginal';  e.style.color = 'var(--yellow)'; }
+    else               { e.textContent = 'Poor';       e.style.color = 'var(--red)'; }
+  });
+  pushSparkData('pf', pf);
+
+  // Trades
+  safe('m-trades', e => { e.textContent = trades.toLocaleString(); });
+  pushSparkData('trades', trades);
+}
+
+function updateRunsCounter() {
+  state.runs++;
+  safe('m-runs', e => { e.textContent = state.runs.toString(); });
+  pushSparkData('runs', state.runs);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   AI GAUGE
+══════════════════════════════════════════════════════════════════════ */
+
+const CIRCUMFERENCE = 163.4; // 2π × 26
+
+function updateAIGauge(pct, label) {
+  const color = { high: '#10b981', medium: '#f59e0b', low: '#ef4444' }[label] || '#00d4aa';
+  safe('ai-gauge-arc', e => {
+    e.style.strokeDashoffset = (CIRCUMFERENCE * (1 - pct / 100)).toString();
+    e.style.stroke = color;
+  });
+  safe('ai-gauge-pct', e => { e.textContent = pct + '%'; });
+  safe('ai-conf-label', e => {
+    e.textContent = label ? label.charAt(0).toUpperCase() + label.slice(1) : '—';
+    e.style.color = color;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   HEADER SCORE
+══════════════════════════════════════════════════════════════════════ */
+
+function updateHeaderScore(score, delta) {
+  const s = parseFloat(score);
+  if (isNaN(s)) return;
+  safe('hdr-score', e => { e.textContent = s.toFixed(3); });
+  if (delta != null) {
+    const d2 = parseFloat(delta);
+    if (!isNaN(d2)) {
+      const sign = d2 >= 0 ? '+' : '';
+      safe('hdr-score-delta', e => {
+        e.textContent = sign + d2.toFixed(3) + ' improvement';
+        e.style.color = d2 >= 0 ? 'var(--green)' : 'var(--red)';
+      });
+    }
+  } else {
+    safe('hdr-score-delta', e => { e.textContent = 'Latest result'; e.style.color = ''; });
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   AI PANEL — shared update function
+══════════════════════════════════════════════════════════════════════ */
+
+function updateAIPanel(d) {
+  if (!d) return;
+
+  safe('ai-waiting', e => { e.style.display = 'none'; });
+  safe('ai-content', e => { e.style.display = ''; });
+
+  // Preview (always visible) — headline + diagnosis
+  if (d.headline) {
+    safe('ai-headline', e => { e.textContent = d.headline; e.style.display = ''; });
+  }
+  if (d.diagnosis) {
+    safe('ai-diagnosis-text', e => { e.textContent = d.diagnosis; });
+  }
+
+  // Details section — populate but keep collapsed until user clicks "View Details"
+  const patterns = d.patterns || d.strengths || [];
+  if (patterns.length) {
+    safe('ai-strengths-section', e => { e.style.display = ''; });
+    safe('ai-strengths-list', e => {
+      e.innerHTML = patterns.slice(0, 4).map(p => '<li>' + escapeHtml(p) + '</li>').join('');
+    });
+  }
+
+  const suggestions = d.suggestions || [];
+  if (suggestions.length) {
+    const s = suggestions[0];
+    let txt = '';
+    if (typeof s === 'string') {
+      txt = s;
+    } else {
+      txt = s.reason || '';
+      if (s.param || s.parameter) {
+        const param = s.param || s.parameter;
+        txt += ' (' + param + ': ' + (s.from !== undefined ? s.from : '') + ' → ' + (s.to !== undefined ? s.to : '') + ')';
+      }
+    }
+    safe('ai-suggestion-text', e => { e.textContent = txt; });
+    safe('ai-suggestion-box', e => { e.style.display = ''; });
+  }
+
+  const risks = d.risk_flags || d.risks || [];
+  if (risks.length) {
+    safe('ai-risks-section', e => { e.style.display = ''; });
+    safe('ai-risks-list', e => {
+      e.innerHTML = risks.slice(0, 3).map(r => '<li>' + escapeHtml(r) + '</li>').join('');
+    });
+  }
+
+  // Confidence (always shown at bottom)
+  const conf = (typeof d.confidence === 'string' ? d.confidence : 'medium').toLowerCase();
+  safe('ai-panel-conf-badge', e => {
+    e.textContent = conf;
+    e.className = 'ai-conf-badge ' + conf;
+  });
+
+  const pctMap = { high: 87, medium: 62, low: 38 };
+  const pct = typeof d.confidence_pct === 'number' ? d.confidence_pct : (pctMap[conf] || 62);
+  updateAIGauge(pct, conf);
+
+  if (d.run_id) safe('ai-run-ref', e => { e.textContent = 'Run: ' + d.run_id; });
+
+  safe('ai-badge', e => { e.style.display = ''; });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RECENT RUNS TABLE
+══════════════════════════════════════════════════════════════════════ */
+
+const MAX_RECENT_RUNS = 8;
+const recentRuns = [];
+
+function addRecentRun(d) {
+  const profit = parseFloat(d.net_profit || 0);
+  const pf     = parseFloat(d.profit_factor || d.pf || 0);
+  const maxDD  = parseFloat(d.max_drawdown || d.max_dd || 0);
+  const run_id = d.run_id || null;
+
+  // Derive verdict: use explicit field if present, otherwise infer from passing
+  let verdict = (d.verdict || '').toUpperCase().replace(/ /g, '_');
+  if (!verdict) {
+    verdict = d.passing === false ? 'NOT_RELIABLE' : (d.passing === true ? 'PASSING' : 'PENDING');
+  }
+
+  const verdictClass = {
+    RECOMMENDED:  'verdict-recommended',
+    PASSING:      'verdict-recommended',
+    RISKY:        'verdict-risky',
+    PENDING:      'verdict-risky',
+    NOT_RELIABLE: 'verdict-not-reliable',
+  }[verdict] || 'verdict-risky';
+
+  const verdictLabel = {
     RECOMMENDED:  'Recommended',
+    PASSING:      'Passing',
     RISKY:        'Risky',
+    PENDING:      'Pending',
     NOT_RELIABLE: 'Not Reliable',
-  };
-  const subs = {
-    RECOMMENDED:  'Consistent returns with controlled drawdown. Ready to deploy.',
-    RISKY:        'Profitable in-sample but shows signs of fragility or OOS degradation. Use with caution.',
-    NOT_RELIABLE: 'Results are inconsistent or not profitable enough. Consider different settings.',
-  };
+  }[verdict] || verdict.replace(/_/g, ' ');
 
-  const profitClass = d.net_profit >= 0 ? 'profit-pos' : 'profit-neg';
-  const oos = d.oos_profit != null
-    ? `<div class="verdict-metric"><div class="verdict-metric-val ${d.oos_profit>=0?'profit-pos':'profit-neg'}" >$${d.oos_profit.toFixed(0)}</div><div class="verdict-metric-lbl">OOS Profit</div></div>`
-    : '';
+  recentRuns.unshift({ profit, pf, maxDD, verdictClass, verdictLabel, run_id });
+  if (recentRuns.length > MAX_RECENT_RUNS) recentRuns.pop();
 
-  banner.className = `verdict-banner ${d.verdict}`;
-  banner.innerHTML = `
-    <div class="verdict-header verdict-${d.verdict}">
-      <div class="verdict-icon">${icons[d.verdict] || '?'}</div>
-      <div>
-        <div class="verdict-title">${labels[d.verdict] || d.verdict}</div>
-        <div class="verdict-sub">${subs[d.verdict] || ''}</div>
-      </div>
-    </div>
-    <div class="verdict-metrics">
-      <div class="verdict-metric">
-        <div class="verdict-metric-val ${profitClass}">$${(d.net_profit||0).toFixed(0)}</div>
-        <div class="verdict-metric-lbl">Net Profit</div>
-      </div>
-      <div class="verdict-metric">
-        <div class="verdict-metric-val">${(d.calmar||0).toFixed(2)}</div>
-        <div class="verdict-metric-lbl">Calmar</div>
-      </div>
-      <div class="verdict-metric">
-        <div class="verdict-metric-val">${(d.win_rate||0).toFixed(1)}%</div>
-        <div class="verdict-metric-lbl">Win Rate</div>
-      </div>
-      <div class="verdict-metric">
-        <div class="verdict-metric-val">${(d.max_drawdown||0).toFixed(1)}%</div>
-        <div class="verdict-metric-lbl">Max DD</div>
-      </div>
-      ${oos}
-    </div>
-    <div class="verdict-actions">
-      ${d.set_file_url ? `<a href="${d.set_file_url}" class="btn-download" download>⬇ Download .set File</a>` : ''}
-      <a href="/reports" class="btn-new-run">📁 View Full Report</a>
-      <a href="/setup" class="btn-new-run">⚡ New Optimization</a>
-    </div>
-  `;
-  banner.style.display = '';
+  const tbody = el('recent-runs-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = recentRuns.map((r, i) => `
+    <tr>
+      <td class="run-num">#${state.runs - i}</td>
+      <td class="${r.profit >= 0 ? 'profit-pos' : 'profit-neg'}">${fmtMoney(r.profit)}</td>
+      <td style="color:var(--yellow);font-weight:600;">${r.pf.toFixed(2)}</td>
+      <td style="color:var(--red);">${r.maxDD.toFixed(1)}%</td>
+      <td><span class="${r.verdictClass}">${r.verdictLabel}</span></td>
+      <td>${r.run_id ? `<button class="detail-btn" onclick="openRunDetail('${escapeHtml(r.run_id)}')">Details</button>` : ''}</td>
+    </tr>
+  `).join('');
 }
 
-function addCandidate(d) {
-  const list = el('candidates-list');
-  const empty = list.querySelector('.cand-empty');
-  if (empty) empty.remove();
+/* ══════════════════════════════════════════════════════════════════════
+   PARAMETERS TABLE
+══════════════════════════════════════════════════════════════════════ */
 
-  candCount++;
-  el('cand-count').textContent = `${candCount} config${candCount !== 1 ? 's' : ''}`;
+function updateParamsTable(params) {
+  if (!params || typeof params !== 'object') return;
+  const tbody = el('params-tbody');
+  if (!tbody) return;
+  const entries = Object.entries(params);
+  if (!entries.length) return;
 
-  // Keep only top 10
-  if (list.children.length >= 10) {
-    list.removeChild(list.lastChild);
+  tbody.innerHTML = entries.slice(0, 8).map(([key, val], i) => {
+    const impactClass = i < 2 ? 'impact-high' : i < 5 ? 'impact-medium' : 'impact-low';
+    const impactLabel = i < 2 ? 'High' : i < 5 ? 'Medium' : 'Low';
+    const display = typeof val === 'number' ? val.toFixed(val % 1 !== 0 ? 4 : 0) : val;
+    return `
+      <tr>
+        <td class="param-name">${escapeHtml(key)}</td>
+        <td class="param-val">${escapeHtml(String(display))}</td>
+        <td><span class="${impactClass}">${impactLabel}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   CHART UPDATES
+══════════════════════════════════════════════════════════════════════ */
+
+function pushEquityPoint(equity, balance, label) {
+  const MAX = 80;
+  const lbl = label || nowStr();
+  equityChart.data.labels.push(lbl);
+  equityChart.data.datasets[0].data.push(parseFloat(equity) || 0);
+  equityChart.data.datasets[1].data.push(parseFloat(balance) || 0);
+  if (equityChart.data.labels.length > MAX) {
+    equityChart.data.labels.shift();
+    equityChart.data.datasets.forEach(ds => ds.data.shift());
+  }
+  equityChart.update('none');
+}
+
+function pushDDPoint(dd, label) {
+  const MAX = 80;
+  const lbl = label || nowStr();
+  drawdownChart.data.labels.push(lbl);
+  drawdownChart.data.datasets[0].data.push(parseFloat(dd) || 0);
+  if (drawdownChart.data.labels.length > MAX) {
+    drawdownChart.data.labels.shift();
+    drawdownChart.data.datasets[0].data.shift();
+  }
+  drawdownChart.update('none');
+}
+
+function populateChartsFromEquityCurve(curve) {
+  if (!Array.isArray(curve) || !curve.length) return;
+  equityChart.data.labels = [];
+  equityChart.data.datasets[0].data = [];
+  equityChart.data.datasets[1].data = [];
+  drawdownChart.data.labels = [];
+  drawdownChart.data.datasets[0].data = [];
+
+  const step = Math.max(1, Math.floor(curve.length / 80));
+  curve.forEach((pt, i) => {
+    if (i % step !== 0 && i !== curve.length - 1) return;
+    const lbl = pt.date || pt.time || String(i + 1);
+    equityChart.data.labels.push(lbl);
+    equityChart.data.datasets[0].data.push(parseFloat(pt.equity || pt.Equity || 0));
+    equityChart.data.datasets[1].data.push(parseFloat(pt.balance || pt.Balance || 0));
+    drawdownChart.data.labels.push(lbl);
+    drawdownChart.data.datasets[0].data.push(parseFloat(pt.drawdown || pt.Drawdown || 0));
+  });
+
+  equityChart.update();
+  drawdownChart.update();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PROGRESS
+══════════════════════════════════════════════════════════════════════ */
+
+function updateProgress(d) {
+  // Use progress_pct if available, fall back to run_number/total
+  let pct = null;
+  if (d.progress_pct !== undefined) pct = d.progress_pct;
+  else if (d.run_number !== undefined && d.total) pct = Math.round(d.run_number / d.total * 100);
+
+  if (pct !== null) {
+    const p = Math.min(100, pct);
+    safe('opt-progress-fill', e => { e.style.width = p + '%'; });
+    safe('hdr-prog-fill',     e => { e.style.width = p + '%'; });
+    safe('hdr-pct',           e => { e.textContent = p + '% Complete'; });
   }
 
-  const card = document.createElement('div');
-  card.className = 'cand-card';
-  const profitClass = (d.net_profit||0) >= 0 ? 'profit-pos' : 'profit-neg';
-  card.innerHTML = `
-    <div class="cand-header">
-      <span class="cand-rank">${d.phase?.toUpperCase() || 'RUN'} · Score ${(d.score||0).toFixed(4)}</span>
-      <span class="cand-run-id">${d.run_id}</span>
-    </div>
-    <div class="cand-score-row">
-      <div class="cand-metric">
-        <div class="cand-metric-lbl">Profit</div>
-        <div class="cand-metric-val ${profitClass}">$${(d.net_profit||0).toFixed(0)}</div>
-      </div>
-      <div class="cand-metric">
-        <div class="cand-metric-lbl">Calmar</div>
-        <div class="cand-metric-val">${(d.calmar||0).toFixed(3)}</div>
-      </div>
-      <div class="cand-metric">
-        <div class="cand-metric-lbl">Win%</div>
-        <div class="cand-metric-val">${(d.win_rate||0).toFixed(1)}%</div>
-      </div>
-      <div class="cand-metric">
-        <div class="cand-metric-lbl">DD%</div>
-        <div class="cand-metric-val">${(d.max_drawdown||0).toFixed(1)}%</div>
-      </div>
-      <div class="cand-metric">
-        <div class="cand-metric-lbl">Trades</div>
-        <div class="cand-metric-val">${d.total_trades||0}</div>
-      </div>
-    </div>
-  `;
-  list.insertBefore(card, list.firstChild);
-}
-
-function addLog(level, msg) {
-  const feed = el('log-feed');
-  const div  = document.createElement('div');
-  div.className = `log-line log-${level}`;
-  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
-  div.textContent = `[${ts}] ${msg}`;
-  feed.appendChild(div);
-  feed.scrollTop = feed.scrollHeight;
-  // Max 200 lines
-  while (feed.children.length > 200) feed.removeChild(feed.firstChild);
-}
-
-// ── Phase indicator helpers ───────────────────────────────────────────────────
-
-function setPhaseActive(phase) {
-  const map = { setup: 'phase-setup', phase1: 'phase-phase1', phase2: 'phase-phase2', phase3: 'phase-phase3' };
-  const id  = map[phase];
-  if (!id) return;
-  document.querySelectorAll('.phase-step').forEach(s => s.classList.remove('active'));
-  const step = el(id);
-  if (step) step.classList.add('active');
-}
-
-function markPhaseDone(phase) {
-  const map = { phase1: 'phase-phase1', phase2: 'phase-phase2', phase3: 'phase-phase3', done: 'phase-done' };
-  const step = el(map[phase]);
-  if (step) { step.classList.remove('active'); step.classList.add('done'); }
-}
-
-// ── Status helpers ────────────────────────────────────────────────────────────
-
-function setStatus(state, phase) {
-  const dot   = el('state-dot');
-  const label = el('state-label');
-
-  const states = {
-    running:  { cls: 'dot-running', label: phase ? `${phase.replace('phase','Phase ')}` : 'Running' },
-    stopping: { cls: 'dot-warn',    label: 'Stopping...' },
-    idle:     { cls: 'dot-idle',    label: 'Ready' },
-    done:     { cls: 'dot-done',    label: 'Complete' },
-  };
-  const s = states[state] || states.idle;
-  dot.className   = `dot ${s.cls}`;
-  label.textContent = s.label;
-}
-
-function updateRunCount(count, d) {
-  if (count !== null) runCount = count;
-  else if (d) runCount++;
-  el('hdr-iter').textContent = totalRuns > 0 ? `${runCount}/${totalRuns}` : runCount;
-}
-
-function updatePhaseLabel(phase, runNum, total) {
-  const labels = { phase1: 'Phase 1: Broad Search', phase2: 'Phase 2: Refinement', phase3: 'Phase 3: Validation', phase3_oos: 'Phase 3: OOS Test', phase3_sens: 'Phase 3: Sensitivity' };
-  el('progress-phase').textContent = labels[phase] || phase;
-  if (runNum != null && total != null) {
-    el('progress-count').textContent = `${runNum} / ${total}`;
-    el('progress-bar-fill').style.width = `${Math.round(runNum / total * 100)}%`;
+  if (d.run_number !== undefined && d.total !== undefined) {
+    safe('opt-gen',       e => { e.textContent = 'Run ' + d.run_number + ' / ' + d.total; });
+    safe('hdr-gen-cur',   e => { e.textContent = d.run_number; });
+    safe('hdr-gen-total', e => { e.textContent = d.total; });
+    safe('opt-remaining', e => {
+      if (!state.startTime || !d.run_number) return;
+      const elapsed = (Date.now() - state.startTime) / 1000;
+      const rem = (elapsed / d.run_number) * (d.total - d.run_number);
+      e.textContent = fmtTime(rem);
+    });
   }
 }
 
-// ── Elapsed timer ─────────────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════════════════════════════
+   ELAPSED TIMER
+══════════════════════════════════════════════════════════════════════ */
 
 function startElapsedTimer() {
-  if (elapsedTimer) clearInterval(elapsedTimer);
-  if (!startTs) startTs = Date.now();
-  elapsedTimer = setInterval(() => {
-    const secs = Math.floor((Date.now() - startTs) / 1000);
-    const mm   = Math.floor(secs / 60).toString().padStart(2, '0');
-    const ss   = (secs % 60).toString().padStart(2, '0');
-    el('hdr-elapsed').textContent = `${mm}:${ss}`;
+  if (!state.startTime) state.startTime = Date.now();
+  stopElapsedTimer();
+  state.elapsedTimer = setInterval(() => {
+    const secs = Math.floor((Date.now() - state.startTime) / 1000);
+    safe('opt-elapsed', e => { e.textContent = fmtTime(secs); });
   }, 1000);
 }
 
 function stopElapsedTimer() {
-  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  if (state.elapsedTimer) { clearInterval(state.elapsedTimer); state.elapsedTimer = null; }
 }
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════════════════════════════
+   RUNNING STATE TOGGLE
+══════════════════════════════════════════════════════════════════════ */
 
-function el(id) { return document.getElementById(id); }
+function setRunningState(isRunning, label) {
+  state.isRunning = isRunning;
 
-// Init: mark Setup phase as active
-setPhaseActive('setup');
+  safe('run-indicator', e => { e.classList.toggle('active', isRunning); });
+  safe('btn-stop',  e => { e.classList.toggle('active', isRunning); });
+  // (btn-pause removed — pipeline doesn't support pause yet)
 
-// Check if run already in progress
-fetch('/api/status').then(r => r.json()).then(s => {
-  if (s.state === 'running') {
-    setStatus(s.state, s.phase);
-    startTs = Date.now() - (s.elapsed_s || 0) * 1000;
+  safe('hdr-dot',        e => { e.classList.toggle('running', isRunning); });
+  safe('hdr-status',     e => { e.textContent = isRunning ? (label || 'Optimizing') : 'System Idle'; });
+  safe('hdr-status-sub', e => { e.textContent = isRunning ? 'Optimization in progress...' : 'Ready to optimize'; });
+
+  if (isRunning) {
+    if (label) safe('run-indicator-label', e => { e.textContent = label; });
     startElapsedTimer();
-    totalRuns = s.total_runs || 0;
-    updateRunCount(s.run_count || 0, null);
-    document.getElementById('progress-wrap').style.display = '';
-    document.getElementById('btn-stop').classList.remove('hidden');
-    setPhaseActive(s.phase);
-    if (s.ea_name) {
-      document.getElementById('session-label').textContent =
-        `${s.ea_name} · ${s.symbol} · ${s.timeframe}`;
+  } else {
+    stopElapsedTimer();
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE STEPS
+══════════════════════════════════════════════════════════════════════ */
+
+const phaseMap = {
+  phase1: 1, phase_1: 1, broad: 1, scan: 1,
+  phase2: 2, phase_2: 2, deep: 2, refine: 2,
+  phase3: 3, phase_3: 3, validate: 3, validation: 3, phase3_oos: 3, phase3_sens: 3,
+};
+
+function setPhaseActive(phaseNum, meta) {
+  for (let i = 1; i <= 3; i++) {
+    const step = el('phase-step-' + i);
+    if (!step) continue;
+    step.classList.remove('active', 'done');
+    if (i < phaseNum) step.classList.add('done');
+    if (i === phaseNum) step.classList.add('active');
+  }
+  const labels = { 1: 'Exploration', 2: 'Iteration', 3: 'Validation' };
+  safe('opt-phase', e => { e.textContent = labels[phaseNum] || 'Phase ' + phaseNum; });
+  if (meta && typeof meta.total === 'number') {
+    const mode = meta.mode === 'autonomous' ? ' · AI' : '';
+    safe('phase-sub-' + phaseNum, e => {
+      e.textContent = `0/${meta.total}${mode}`;
+    });
+  }
+}
+
+function updatePhaseSubProgress(phaseNum, current, total) {
+  safe('phase-sub-' + phaseNum, e => {
+    e.textContent = `${current}/${total}`;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIVE LOG
+══════════════════════════════════════════════════════════════════════ */
+
+const MAX_LOG_LINES = 200;
+
+function addLog(msg, level) {
+  const lvl = level || 'info';
+  state.logCount++;
+  safe('log-count', e => { e.textContent = state.logCount; });
+
+  const feed = el('log-feed');
+  if (!feed) return;
+
+  const line = document.createElement('div');
+  line.className = 'log-line ' + lvl;
+  line.innerHTML = '<span class="log-time">' + nowStr() + '</span><span class="log-msg">' + escapeHtml(String(msg)) + '</span>';
+  feed.appendChild(line);
+  while (feed.children.length > MAX_LOG_LINES) feed.removeChild(feed.firstChild);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function toggleLog() {
+  const body = el('log-body');
+  const icon = el('log-toggle-icon');
+  if (body) body.classList.toggle('open');
+  if (icon) icon.classList.toggle('open');
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MT5 STATUS
+══════════════════════════════════════════════════════════════════════ */
+
+function updateMT5Status(statusStr, label) {
+  const dot = el('mt5-dot');
+  if (dot) dot.classList.toggle('disconnected', statusStr === 'disconnected');
+  safe('mt5-state', e => { e.textContent = label || statusStr; });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   VERDICT OVERLAY
+══════════════════════════════════════════════════════════════════════ */
+
+function showVerdict(d) {
+  const icons   = { RECOMMENDED: '✅', RISKY: '⚠️', NOT_RELIABLE: '❌' };
+  const colors  = { RECOMMENDED: '#10b981', RISKY: '#f59e0b', NOT_RELIABLE: '#ef4444' };
+  const subs    = {
+    RECOMMENDED:  'Consistent returns with controlled drawdown. Ready to deploy.',
+    RISKY:        'Profitable in-sample but shows fragility. Deploy with caution.',
+    NOT_RELIABLE: 'Results are inconsistent. Try different settings or date ranges.',
+  };
+
+  const verdict = (d.verdict || 'RISKY').toUpperCase().replace(/ /g, '_');
+
+  safe('verdict-icon',     e => { e.textContent = icons[verdict] || '?'; });
+  safe('verdict-title',    e => { e.textContent = verdict.replace(/_/g, ' '); e.style.color = colors[verdict] || '#e2e8f0'; });
+  safe('verdict-subtitle', e => { e.textContent = subs[verdict] || ''; });
+
+  const profit  = parseFloat(d.net_profit  || 0);
+  const calmar  = parseFloat(d.calmar      || 0);
+  const winRate = parseFloat(d.win_rate    || 0);
+  const maxDD   = parseFloat(d.max_drawdown || d.max_dd || 0);
+
+  safe('verdict-metrics', e => {
+    e.innerHTML = `
+      <div class="vm"><div class="vm-val" style="color:#10b981">${fmtMoney(profit)}</div><div class="vm-lbl">Net Profit</div></div>
+      <div class="vm"><div class="vm-val">${calmar.toFixed(2)}</div><div class="vm-lbl">Calmar</div></div>
+      <div class="vm"><div class="vm-val">${winRate.toFixed(1)}%</div><div class="vm-lbl">Win Rate</div></div>
+      <div class="vm"><div class="vm-val" style="color:#ef4444">${maxDD.toFixed(1)}%</div><div class="vm-lbl">Max DD</div></div>
+    `;
+  });
+
+  safe('verdict-actions', e => {
+    e.innerHTML = `
+      ${d.set_file_url ? '<a href="' + d.set_file_url + '" class="verdict-btn primary" download>⬇ Download .set File</a>' : ''}
+      <a href="/reports" class="verdict-btn secondary">📋 View Report</a>
+      <a href="/setup"   class="verdict-btn secondary">⚡ New Run</a>
+      <button class="verdict-btn ghost" onclick="document.getElementById('verdict-overlay').style.display='none'">✕ Close</button>
+    `;
+  });
+
+  safe('verdict-overlay', e => { e.style.display = 'flex'; });
+  stopElapsedTimer();
+  setRunningState(false);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   STATUS POLLING FALLBACK
+   Polls /api/status every 5 seconds when SocketIO is connected but
+   pipeline state is unknown (e.g., user opens dashboard mid-run).
+══════════════════════════════════════════════════════════════════════ */
+
+let pollInterval = null;
+
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(async () => {
+    try {
+      const resp = await fetch('/api/status');
+      const d = await resp.json();
+      syncFromStatus(d);
+    } catch (_) {}
+  }, 5000);
+}
+
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
+function syncFromStatus(d) {
+  const isRunning = d.state === 'running';
+
+  if (isRunning && !state.isRunning) {
+    setRunningState(true, d.phase || 'Optimizing...');
+    const ph = phaseMap[d.phase] || 1;
+    setPhaseActive(ph);
+  } else if (!isRunning && state.isRunning) {
+    setRunningState(false);
+  }
+
+  if (d.run_count) {
+    state.runs = d.run_count;
+    safe('m-runs', e => { e.textContent = state.runs.toString(); });
+  }
+
+  // Populate metric cards from flat status fields
+  if (d.best_net_profit != null || d.best_max_drawdown != null) {
+    updateMetricCards({
+      net_profit:    d.best_net_profit,
+      max_drawdown:  d.best_max_drawdown,
+      profit_factor: d.best_pf,
+      total_trades:  d.best_total_trades,
+    });
+  }
+
+  // Restore header score
+  if (d.best_score != null) updateHeaderScore(d.best_score);
+
+  // Restore AI panel
+  if (d.latest_insight) {
+    updateAIPanel(d.latest_insight);
+    addLog('AI insight restored from server (run: ' + (d.latest_insight.run_id || '?') + ')', 'info');
+  }
+
+  if (d.elapsed_s) {
+    // Approximate startTime from elapsed
+    if (!state.startTime) state.startTime = Date.now() - d.elapsed_s * 1000;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SOCKET.IO
+══════════════════════════════════════════════════════════════════════ */
+
+const socket = io({ transports: ['websocket', 'polling'] });
+if (typeof window !== 'undefined') window.socket = socket;
+
+socket.on('connect', () => {
+  addLog('Connected to APEX server.', 'success');
+  updateMT5Status('connected', 'Connected');
+  // Also poll once to sync state immediately
+  fetch('/api/status').then(r => r.json()).then(syncFromStatus).catch(() => {});
+});
+
+socket.on('disconnect', (reason) => {
+  addLog('Disconnected: ' + reason, 'warn');
+  updateMT5Status('disconnected', 'Disconnected');
+});
+
+socket.on('connect_error', (err) => {
+  addLog('Connection error: ' + err.message, 'error');
+  updateMT5Status('disconnected', 'Error');
+});
+
+/* ── status_sync ── full state on reconnect ───────────────────────── */
+
+socket.on('status_sync', (d) => {
+  addLog('Status sync received.', 'info');
+  syncFromStatus(d);
+});
+
+/* ── status_change ────────────────────────────────────────────────── */
+
+socket.on('status_change', (d) => {
+  // Backend emits d.state NOT d.status
+  const running = d.state === 'running' || d.status === 'running';
+  const label = d.label || d.phase || (running ? 'Optimizing...' : 'Idle');
+  setRunningState(running, label);
+  addLog('Status: ' + (d.state || d.status || (running ? 'running' : 'idle')), 'info');
+
+  // Reset live-intelligence panels when a fresh run starts
+  if (running && (d.state === 'running' || d.status === 'running') && d.phase === 'setup') {
+    thinkingFeedState.entries = [];
+    paramChangesState.iterations = [];
+    validationState.runs = [];
+    validationState.planned = 0;
+    validationState.complete = 0;
+    validationState.active = false;
+    renderThinkingFeed();
+    renderParamChanges();
+    renderValidation();
+    safe('tf-badge', e => { e.textContent = 'Live'; e.className = 'badge live'; });
+    safe('pc-badge', e => { e.textContent = '—'; e.className = 'badge'; });
+    safe('val-badge', e => { e.textContent = 'Pending'; e.className = 'badge'; });
+    dismissEarlyTerm();
+  }
+});
+
+/* ── run_complete ─────────────────────────────────────────────────── */
+
+socket.on('run_complete', (d) => {
+  updateRunsCounter();
+
+  // Only update metric cards if we have meaningful data
+  if (d.net_profit != null) updateMetricCards(d);
+
+  // Charts: use equity curve if available, otherwise push single point
+  if (d.equity_curve) {
+    populateChartsFromEquityCurve(d.equity_curve);
+  } else if (d.net_profit != null) {
+    pushEquityPoint(d.net_profit, d.balance || d.net_profit, 'Run ' + state.runs);
+    pushDDPoint(d.max_drawdown || 0, 'Run ' + state.runs);
+  }
+
+  if (d.params) updateParamsTable(d.params);
+  if (d.score != null) updateHeaderScore(d.score);
+
+  addRecentRun(d);
+  updateProgress(d);
+
+  // Update per-phase sub-progress label under phase dot
+  const phase = (d.phase || '').toLowerCase();
+  if (phase === 'phase1' && d.run_number && d.total) {
+    updatePhaseSubProgress(1, d.run_number, d.total);
+  } else if (phase.startsWith('phase2') && d.progress_pct != null) {
+    // Rough count: we don't always have iteration here; UI updates via ai_iteration_* handler
+  } else if (phase.startsWith('phase3')) {
+    // Updated via validation_run_complete handler
+  }
+
+  const msg = 'Run ' + state.runs + ' (' + (d.phase || '?') + ') '
+    + (d.net_profit != null ? '— Net Profit: ' + fmtMoney(d.net_profit) : '')
+    + (d.profit_factor != null ? ', PF: ' + parseFloat(d.profit_factor).toFixed(2) : '')
+    + (d.max_drawdown != null ? ', Max DD: ' + fmtPct(d.max_drawdown) : '');
+  addLog(msg, d.passing === false ? 'warn' : 'success');
+});
+
+/* ── phase_start ──────────────────────────────────────────────────── */
+
+socket.on('phase_start', (d) => {
+  const phaseNum = phaseMap[d.phase] || parseInt(d.phase_num || d.phase || '1', 10);
+  setPhaseActive(phaseNum, { total: d.total, mode: d.mode });
+  const label = d.label
+    || ({ 1: 'Exploration', 2: (d.mode === 'autonomous' ? 'AI Iteration' : 'Iteration'), 3: 'Validation' }[phaseNum])
+    || ('Phase ' + phaseNum);
+  addLog('Phase started: ' + label, 'info');
+  safe('run-indicator-label', e => { e.textContent = label + '...'; });
+  setRunningState(true, label);
+});
+
+/* ── phase1_complete ──────────────────────────────────────────────── */
+
+socket.on('phase1_complete', (d) => {
+  addLog('Phase 1 complete — ' + (d.n_passing || 0) + '/' + (d.total_tested || '?') + ' configs passed.', 'success');
+  setPhaseActive(2);
+
+  // Backend emits top_results (NOT top_configs)
+  const topResults = d.top_results || d.top_configs || [];
+  if (topResults.length) {
+    if (topResults[0] && topResults[0].params) updateParamsTable(topResults[0].params);
+    topResults.forEach(cfg => addRecentRun(cfg));
+  }
+});
+
+/* ── phase2_complete ──────────────────────────────────────────────── */
+
+socket.on('phase2_complete', (d) => {
+  addLog('Phase 2 complete — best: ' + (d.best_run_id || '?') + ', profit=$' + (d.best_profit || 0), 'success');
+  setPhaseActive(3);
+
+  // Phase2 complete has flat fields: best_profit, best_calmar
+  if (d.best_profit != null) {
+    updateMetricCards({ net_profit: d.best_profit, calmar: d.best_calmar });
+  }
+});
+
+/* ── optimization_complete ────────────────────────────────────────── */
+
+socket.on('optimization_complete', (d) => {
+  addLog('✅ Optimization complete! Verdict: ' + (d.verdict || '?'), 'success');
+  for (let i = 1; i <= 3; i++) {
+    const step = el('phase-step-' + i);
+    if (step) { step.classList.remove('active'); step.classList.add('done'); }
+  }
+  safe('opt-progress-fill', e => { e.style.width = '100%'; });
+  safe('hdr-prog-fill',     e => { e.style.width = '100%'; });
+  safe('hdr-pct',           e => { e.textContent = '100% Complete'; });
+  safe('opt-phase', e => { e.textContent = 'Complete'; });
+  if (d.score != null) updateHeaderScore(d.score);
+  showVerdict(d);
+});
+
+/* ── ai_insight ───────────────────────────────────────────────────── */
+
+socket.on('ai_insight', (d) => {
+  updateAIPanel(d);
+  addLog('AI Insight received (confidence: ' + (d.confidence || '?') + ')', 'info');
+});
+
+/* ── log ──────────────────────────────────────────────────────────── */
+
+socket.on('log', (d) => {
+  const msg   = typeof d === 'string' ? d : (d.msg || d.message || JSON.stringify(d));
+  const level = typeof d === 'object' ? (d.level || 'info') : 'info';
+  addLog(msg, level);
+});
+
+/* ── no_profitable_config ─────────────────────────────────────────── */
+
+socket.on('no_profitable_config', (d) => {
+  safe('no-profit-banner', e => {
+    e.classList.add('active');
+    // Backend emits d.msg (not d.message)
+    const text = (d && (d.msg || d.message)) || 'No profitable configuration found.';
+    const msgEl = el('no-profit-msg');
+    if (msgEl) msgEl.textContent = ' ' + text;
+  });
+  setRunningState(false);
+  addLog('No profitable configuration found.', 'warn');
+});
+
+/* ── error ────────────────────────────────────────────────────────── */
+
+socket.on('error', (d) => {
+  const msg = (d && d.msg) || 'Unknown server error';
+  addLog('Server error: ' + msg, 'error');
+  setRunningState(false);
+});
+
+/* ── Autonomous AI Loop events ─────────────────────────────────────── */
+
+socket.on('ai_iteration_start', (d) => {
+  const iter = d.iteration || '?';
+  const max  = d.max_iterations || '?';
+  safe('hdr-status',     e => { e.textContent = 'AI Loop'; });
+  safe('hdr-status-sub', e => { e.textContent = `Iteration ${iter} / ${max}`; });
+
+  let msg = `🤖 AI Iteration ${iter}/${max}`;
+  if (d.is_stuck_escape) {
+    msg += ' [escape mode]';
+  } else if (d.changes && d.changes.length) {
+    const changes = d.changes.map(c => `${c.param}=${c.value}`).join(', ');
+    msg += ` — trying: ${changes}`;
+  }
+  addLog(msg, 'info');
+  if (d.analysis) addLog(`  AI reasoning: ${d.analysis}`, 'info');
+});
+
+socket.on('ai_iteration_complete', (d) => {
+  const iter   = d.iteration || '?';
+  const max    = d.max_iterations || 0;
+  const pf     = parseFloat(d.profit_factor || 0).toFixed(2);
+  const calmar = parseFloat(d.calmar || 0).toFixed(2);
+  const dd     = parseFloat(d.max_drawdown || 0).toFixed(1);
+  const status = d.passing ? '✅' : '❌';
+
+  addLog(
+    `  ${status} iter=${iter} | PF=${pf} | Calmar=${calmar} | DD=${dd}% | `
+    + `confidence=${(d.confidence || 0).toFixed(2)}`,
+    d.passing ? 'success' : 'warn'
+  );
+
+  if (typeof iter === 'number' && max) updatePhaseSubProgress(2, iter, max);
+  if (d.best_score != null) updateHeaderScore(d.best_score);
+
+  if (d.goal_status) {
+    const gs = d.goal_status;
+    const flags = [
+      gs.profit_factor_met ? '✓ PF'     : '✗ PF',
+      gs.drawdown_ok       ? '✓ DD'     : '✗ DD',
+      gs.calmar_met        ? '✓ Calmar' : '✗ Calmar',
+    ].join('  ');
+    addLog(`  Targets: ${flags}`, 'info');
+  }
+
+  if (d.targets_met) addLog('🎯 All targets met! Stopping AI loop early.', 'success');
+});
+
+socket.on('ai_targets_met', (d) => {
+  addLog(
+    `🎯 Targets achieved after ${d.iteration} iterations — `
+    + `PF=${parseFloat(d.profit_factor || 0).toFixed(2)}, `
+    + `Calmar=${parseFloat(d.calmar || 0).toFixed(2)}, `
+    + `DD=${parseFloat(d.max_drawdown || 0).toFixed(1)}%`,
+    'success'
+  );
+});
+
+socket.on('ai_stuck', (d) => {
+  addLog(`⚠ AI loop stuck at iteration ${d.iteration} — applying random escape`, 'warn');
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   LIVE INTELLIGENCE — AI Thinking Feed / Param Changes / Validation
+══════════════════════════════════════════════════════════════════════ */
+
+const MAX_THINKING_ENTRIES = 150;
+const MAX_PARAM_CHANGE_ITERATIONS = 20;
+const thinkingFeedState = { entries: [], active: false };
+const paramChangesState = { iterations: [] };
+const validationState   = { runs: [], planned: 0, complete: 0, active: false };
+
+function _formatVal(v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'number') {
+    if (Number.isInteger(v)) return String(v);
+    return Number(v).toFixed(Math.abs(v) < 10 ? 4 : 2);
+  }
+  return String(v);
+}
+
+function _markerFor(kind) {
+  return {
+    info:       '•',
+    reasoning:  '✦',
+    decision:   '→',
+    success:    '✓',
+    warning:    '⚠',
+    hypothesis: '?',
+  }[kind] || '•';
+}
+
+function renderThinkingFeed() {
+  const box = el('thinking-feed');
+  if (!box) return;
+  if (!thinkingFeedState.entries.length) {
+    box.innerHTML = '<div class="live-intel-empty">Waiting for the optimizer to start…<br><span style="font-size:0.68rem">The AI\'s reasoning will stream here in real time.</span></div>';
+    return;
+  }
+  box.innerHTML = thinkingFeedState.entries.map(e => {
+    const kind = e.kind || 'info';
+    const iter = e.iteration ? `<span class="tf-chip">iter ${e.iteration}</span>` : '';
+    const phase = e.phase ? `<span class="tf-chip">${escapeHtml(e.phase)}</span>` : '';
+    const time = e.time ? `<span>${escapeHtml(e.time)}</span>` : '';
+    return `<div class="tf-entry ${kind}">
+      <div class="tf-marker">${_markerFor(kind)}</div>
+      <div class="tf-body">
+        <div class="tf-msg">${escapeHtml(e.msg)}</div>
+        <div class="tf-meta">${time}${iter}${phase}</div>
+      </div>
+    </div>`;
+  }).join('');
+  // Auto-scroll to bottom so latest entry is visible
+  box.scrollTop = box.scrollHeight;
+}
+
+function addThinking(d) {
+  const entry = {
+    msg:       d.msg || '',
+    kind:      d.kind || 'info',
+    iteration: d.iteration,
+    phase:     d.phase,
+    time:      nowStr(),
+  };
+  thinkingFeedState.entries.push(entry);
+  if (thinkingFeedState.entries.length > MAX_THINKING_ENTRIES) {
+    thinkingFeedState.entries.shift();
+  }
+  thinkingFeedState.active = true;
+  safe('tf-badge', e => { e.textContent = 'Live'; e.className = 'badge live'; });
+  renderThinkingFeed();
+}
+
+function renderParamChanges() {
+  const box = el('param-changes-list');
+  if (!box) return;
+  if (!paramChangesState.iterations.length) {
+    box.innerHTML = '<div class="live-intel-empty">No iterations yet.<br><span style="font-size:0.68rem">AI-driven parameter edits appear per iteration.</span></div>';
+    return;
+  }
+  // Newest first
+  const items = [...paramChangesState.iterations].reverse();
+  box.innerHTML = items.map(it => {
+    const changes = (it.changes || []).map(c => `
+      <div class="pc-change">
+        <span class="pc-param">${escapeHtml(c.param || '')}</span>:
+        <span class="pc-oldval">${escapeHtml(_formatVal(c.from))}</span>
+        <span class="pc-arrow">→</span>
+        <span class="pc-newval">${escapeHtml(_formatVal(c.to))}</span>
+        ${c.reason ? `<div class="pc-reason">${escapeHtml(c.reason)}</div>` : ''}
+      </div>
+    `).join('');
+    const conf = (typeof it.confidence === 'number')
+      ? `conf ${(it.confidence * 100).toFixed(0)}%`
+      : '';
+    return `<div class="pc-iteration">
+      <div class="pc-iter-header">
+        <span class="pc-iter-label">iter ${it.iteration}</span>
+        <span class="pc-iter-conf">${escapeHtml(conf)}</span>
+      </div>
+      ${changes || '<div class="pc-change" style="color:var(--muted);font-style:italic">(no param changes — random escape)</div>'}
+    </div>`;
+  }).join('');
+}
+
+function addParamChanges(d) {
+  paramChangesState.iterations.push({
+    iteration:  d.iteration,
+    changes:    d.changes || d.change_records || [],
+    analysis:   d.analysis || '',
+    confidence: d.confidence,
+  });
+  if (paramChangesState.iterations.length > MAX_PARAM_CHANGE_ITERATIONS) {
+    paramChangesState.iterations.shift();
+  }
+  safe('pc-badge', e => { e.textContent = `iter ${d.iteration}`; e.className = 'badge live'; });
+  renderParamChanges();
+}
+
+function renderValidation() {
+  const box = el('validation-panel');
+  if (!box) return;
+  if (!validationState.active && !validationState.runs.length) {
+    box.innerHTML = '<div class="live-intel-empty">Validation runs after optimization.<br><span style="font-size:0.68rem">Out-of-sample + sensitivity tests.</span></div>';
+    return;
+  }
+  const planned = validationState.planned || validationState.runs.length;
+  const done    = validationState.complete;
+  const pct     = planned > 0 ? Math.round(done / planned * 100) : 0;
+  const progress = `
+    <div class="val-progress-row">
+      <span>${done}/${planned}</span>
+      <div class="val-progress-bar"><div class="val-progress-fill" style="width:${pct}%"></div></div>
+      <span>${pct}%</span>
+    </div>`;
+  const runsHtml = validationState.runs.map(r => {
+    let clsExtra = r.status === 'running' ? 'active' : (r.passing === true ? 'pass' : (r.passing === false ? 'fail' : ''));
+    const statusBadge = r.status === 'running'
+      ? '<span class="val-spinner"></span>'
+      : (r.passing ? '<span style="color:var(--green)">✓</span>'
+                   : r.passing === false ? '<span style="color:var(--red)">✗</span>' : '');
+    const metrics = (r.status === 'complete') ? `
+      <div class="val-run-metrics">
+        <div class="val-metric"><div class="val-metric-lbl">Profit</div><div class="val-metric-val" style="color:${r.net_profit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(r.net_profit)}</div></div>
+        <div class="val-metric"><div class="val-metric-lbl">PF</div><div class="val-metric-val" style="color:var(--yellow)">${Number(r.profit_factor || 0).toFixed(2)}</div></div>
+        <div class="val-metric"><div class="val-metric-lbl">Calmar</div><div class="val-metric-val" style="color:var(--teal)">${Number(r.calmar || 0).toFixed(2)}</div></div>
+        <div class="val-metric"><div class="val-metric-lbl">DD</div><div class="val-metric-val" style="color:var(--red)">${Number(r.max_drawdown || 0).toFixed(1)}%</div></div>
+      </div>` : '';
+    return `<div class="val-run ${clsExtra}">
+      <div class="val-run-title">
+        ${statusBadge}
+        <span>${escapeHtml(r.label || r.kind || 'Run')}</span>
+        <span class="val-run-kind ${escapeHtml(r.kind || '')}">${escapeHtml(r.kind || '')}</span>
+      </div>
+      ${r.description ? `<div class="val-run-desc">${escapeHtml(r.description)}</div>` : ''}
+      ${metrics}
+    </div>`;
+  }).join('');
+  box.innerHTML = progress + runsHtml;
+}
+
+function validationRunStart(d) {
+  validationState.active = true;
+  validationState.planned = d.total || validationState.planned;
+  // Replace any existing run with same run_id
+  validationState.runs = validationState.runs.filter(r => r.run_id !== d.run_id);
+  validationState.runs.push({
+    run_id:      d.run_id,
+    kind:        d.kind,
+    label:       d.label,
+    description: d.description,
+    index:       d.index,
+    status:      'running',
+  });
+  safe('val-badge', e => { e.textContent = `Running ${d.index}/${d.total || validationState.planned}`; e.className = 'badge live'; });
+  renderValidation();
+}
+
+function validationRunComplete(d) {
+  const idx = validationState.runs.findIndex(r => r.run_id === d.run_id);
+  const base = idx >= 0 ? validationState.runs[idx] : { run_id: d.run_id, kind: d.kind, label: d.label };
+  const merged = {
+    ...base,
+    status:        'complete',
+    net_profit:    d.net_profit,
+    profit_factor: d.profit_factor,
+    calmar:        d.calmar,
+    max_drawdown:  d.max_drawdown,
+    total_trades:  d.total_trades,
+    passing:       d.passing,
+  };
+  if (idx >= 0) validationState.runs[idx] = merged;
+  else validationState.runs.push(merged);
+  validationState.complete++;
+  renderValidation();
+}
+
+function validationDone(d) {
+  validationState.active = false;
+  const label = ({
+    RECOMMENDED:  'Passed',
+    RISKY:        'Mixed',
+    NOT_RELIABLE: 'Failed',
+  })[d.verdict] || 'Done';
+  const cls = d.verdict === 'RECOMMENDED' ? 'live' : '';
+  safe('val-badge', e => { e.textContent = label; e.className = `badge ${cls}`; });
+  renderValidation();
+}
+
+function showEarlyTermination(d) {
+  const banner = el('early-term-banner');
+  if (!banner) return;
+  const reason = d.reason || 'unknown';
+  const cls = {
+    targets_met:       'success',
+    no_profit:         'critical',
+    budget_exhausted:  'warning',
+    stuck_escape:      'warning',
+    user_stop:         'warning',
+  }[reason] || 'warning';
+  banner.className = `early-term-banner ${cls} active`;
+
+  const icon = {
+    targets_met: '🎯',
+    no_profit:   '⚠',
+    budget_exhausted: '⏱',
+    stuck_escape: '↻',
+    user_stop: '⏹',
+  }[reason] || '⚠';
+  safe('early-term-icon', e => { e.textContent = icon; });
+
+  const heading = {
+    targets_met:      'Targets Met — Optimization Complete',
+    no_profit:        'Optimization Stopped Early',
+    budget_exhausted: 'Time Budget Exhausted',
+    stuck_escape:     'Optimizer Stuck',
+    user_stop:        'Stopped by User',
+  }[reason] || 'Optimization Event';
+  safe('early-term-heading', e => { e.textContent = heading; });
+
+  safe('early-term-msg', e => { e.textContent = d.message || ''; });
+
+  // Render details as chips
+  const det = d.details || {};
+  const chips = Object.entries(det)
+    .filter(([k, v]) => typeof v !== 'object' && v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `<span>${escapeHtml(k)}: <strong style="color:var(--text)">${escapeHtml(String(v))}</strong></span>`)
+    .join('');
+  safe('early-term-details', e => { e.innerHTML = chips; });
+}
+
+function dismissEarlyTerm() {
+  safe('early-term-banner', e => { e.classList.remove('active'); });
+}
+
+/* ── Socket wiring for new events ─────────────────────────────────── */
+
+socket.on('ai_thinking', (d) => {
+  addThinking(d);
+});
+
+socket.on('param_changes', (d) => {
+  addParamChanges(d);
+});
+
+socket.on('validation_start', (d) => {
+  // Reset the panel for a fresh validation phase
+  validationState.runs = [];
+  validationState.planned = d.planned_runs || 0;
+  validationState.complete = 0;
+  validationState.active = true;
+  safe('val-badge', e => { e.textContent = `0/${d.planned_runs}`; e.className = 'badge live'; });
+  renderValidation();
+  addLog(`Validation: planning ${d.planned_runs} test runs`, 'info');
+});
+
+socket.on('validation_run_start', (d) => {
+  validationRunStart(d);
+});
+
+socket.on('validation_run_complete', (d) => {
+  validationRunComplete(d);
+});
+
+socket.on('validation_done', (d) => {
+  validationDone(d);
+});
+
+socket.on('early_termination', (d) => {
+  showEarlyTermination(d);
+  addLog(`⚠ ${d.message}`, d.reason === 'targets_met' ? 'success' : 'warn');
+});
+
+/* ── Also capture change_records from ai_iteration_start as a fallback ── */
+socket.on('ai_iteration_start', (d) => {
+  // (existing handler runs first — this just ensures param-changes panel is populated
+  //  even if the dedicated param_changes event is missed for any reason)
+  if (d.change_records && d.change_records.length) {
+    const already = paramChangesState.iterations.find(i => i.iteration === d.iteration);
+    if (!already) {
+      addParamChanges({
+        iteration:  d.iteration,
+        changes:    d.change_records,
+        analysis:   d.analysis,
+        confidence: d.confidence,
+      });
     }
   }
-}).catch(() => {});
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   STOP BUTTON — uses HTTP POST, not socket emit
+══════════════════════════════════════════════════════════════════════ */
+
+safe('btn-stop', stopBtn => {
+  stopBtn.addEventListener('click', async () => {
+    addLog('Stopping optimization...', 'warn');
+    stopBtn.classList.remove('active');
+    try {
+      await fetch('/api/stop', { method: 'POST' });
+      setRunningState(false);
+      addLog('Stop signal sent.', 'warn');
+    } catch (e) {
+      addLog('Stop request failed: ' + e.message, 'error');
+    }
+  });
+});
+
+/* Pause button removed — see dashboard.html. Pipeline only supports Stop. */
+
+/* ══════════════════════════════════════════════════════════════════════
+   HISTORY RESTORATION
+   Loads past runs from /api/history and /api/ai_insight/latest so
+   reopening the dashboard shows progressive data, not a blank slate.
+══════════════════════════════════════════════════════════════════════ */
+
+async function restoreHistory() {
+  try {
+    const [histResp, aiResp] = await Promise.all([
+      fetch('/api/history'),
+      fetch('/api/ai_insight/latest'),
+    ]);
+
+    const runs = await histResp.json();
+    if (Array.isArray(runs) && runs.length) {
+      // Populate recent runs table (last 8, newest first)
+      const sorted = runs.slice().reverse();
+      state.runs = runs.length;
+      safe('m-runs', e => { e.textContent = state.runs; });
+
+      sorted.slice(0, 8).forEach(r => addRecentRun(r));
+
+      // Push equity sparkline from net profits
+      runs.forEach(r => {
+        if (r.net_profit != null) {
+          pushEquityPoint(r.net_profit, r.net_profit, r.run_id || '');
+          pushDDPoint(r.max_drawdown || 0, r.run_id || '');
+          pushSparkData('profit', r.net_profit);
+          pushSparkData('dd', r.max_drawdown || 0);
+          pushSparkData('pf', r.profit_factor || 0);
+          pushSparkData('trades', r.total_trades || 0);
+          pushSparkData('runs', state.runs);
+        }
+      });
+
+      // Show best metrics
+      const passing = runs.filter(r => r.passing);
+      if (passing.length) {
+        const best = passing.reduce((a, b) => (a.net_profit > b.net_profit ? a : b));
+        updateMetricCards(best);
+        addLog('Restored ' + runs.length + ' past runs from history.', 'info');
+      }
+    }
+
+    // Restore AI panel if insight exists
+    const insight = await aiResp.json();
+    if (insight) {
+      updateAIPanel(insight);
+      addLog('AI insight restored (run: ' + (insight.run_id || '?') + ').', 'info');
+    }
+  } catch (e) {
+    addLog('History restore: ' + e.message, 'warn');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SETTINGS MODAL
+══════════════════════════════════════════════════════════════════════ */
+
+function openSettings() {
+  safe('settings-overlay', e => { e.style.display = 'flex'; });
+  loadSettings();
+}
+
+function closeSettings() {
+  safe('settings-overlay', e => { e.style.display = 'none'; });
+}
+
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  document.querySelectorAll('.settings-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'stab-' + tab);
+  });
+}
+
+function toggleSettingsBool(btn) {
+  btn.classList.toggle('on');
+}
+
+function setBoolToggle(id, value) {
+  const btn = el(id);
+  if (!btn) return;
+  btn.classList.toggle('on', !!value);
+}
+
+function getBoolToggle(id) {
+  const btn = el(id);
+  return btn ? btn.classList.contains('on') : false;
+}
+
+function setVal(id, value) {
+  const e = el(id);
+  if (e) e.value = value != null ? value : '';
+}
+
+function getVal(id) {
+  const e = el(id);
+  return e ? e.value : '';
+}
+
+async function loadSettings() {
+  try {
+    const resp = await fetch('/api/settings');
+    const cfg = await resp.json();
+
+    // AI tab
+    setBoolToggle('s-ai-enabled', cfg.ai && cfg.ai.enabled !== false);
+    setVal('s-ai-key', (cfg.ai && cfg.ai.anthropic_api_key) || '');
+    setVal('s-ai-model', (cfg.ai && cfg.ai.model) || 'claude-opus-4-7');
+    setVal('s-ai-timeout', (cfg.ai && cfg.ai.timeout_seconds) || 30);
+
+    // MT5 tab
+    setVal('s-mt5-exe',     (cfg.mt5 && cfg.mt5.terminal_exe) || '');
+    setVal('s-mt5-appdata', (cfg.mt5 && cfg.mt5.appdata_path) || '');
+    setVal('s-mt5-mql5',   (cfg.mt5 && cfg.mt5.mql5_files_path) || '');
+    setVal('s-mt5-timeout', (cfg.mt5 && cfg.mt5.tester_timeout_seconds) || 120);
+    setVal('s-mt5-model',   (cfg.mt5 && cfg.mt5.tester_model) || 1);
+
+    // Broker tab
+    setVal('s-broker-tz',      (cfg.broker && cfg.broker.timezone_offset_hours) != null ? cfg.broker.timezone_offset_hours : 3);
+    setVal('s-broker-deposit',  (cfg.broker && cfg.broker.deposit) || 10000);
+    setVal('s-broker-leverage', (cfg.broker && cfg.broker.leverage) || 500);
+
+    // Thresholds tab
+    setVal('s-thr-trades',  (cfg.thresholds && cfg.thresholds.min_trades) || 30);
+    setVal('s-thr-pf',      (cfg.thresholds && cfg.thresholds.min_profit_factor) || 1.2);
+    setVal('s-thr-calmar',  (cfg.thresholds && cfg.thresholds.min_calmar) || 0.5);
+    setVal('s-thr-oos',     (cfg.thresholds && cfg.thresholds.max_oos_degradation) || 0.3);
+    setVal('s-thr-sens',    (cfg.thresholds && cfg.thresholds.sensitivity_tolerance) || 0.15);
+  } catch (e) {
+    showSettingsMsg('Failed to load settings: ' + e.message, false);
+  }
+}
+
+async function saveSettings() {
+  const btn = el('settings-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  const payload = {
+    ai: {
+      enabled:           getBoolToggle('s-ai-enabled'),
+      anthropic_api_key: getVal('s-ai-key').trim(),
+      model:             getVal('s-ai-model'),
+      timeout_seconds:   parseFloat(getVal('s-ai-timeout')) || 30,
+    },
+    mt5: {
+      terminal_exe:           getVal('s-mt5-exe').trim(),
+      appdata_path:           getVal('s-mt5-appdata').trim(),
+      mql5_files_path:        getVal('s-mt5-mql5').trim(),
+      tester_timeout_seconds: parseInt(getVal('s-mt5-timeout'), 10) || 120,
+      tester_model:           parseInt(getVal('s-mt5-model'), 10) || 1,
+    },
+    broker: {
+      timezone_offset_hours: parseFloat(getVal('s-broker-tz')) || 3,
+      deposit:               parseFloat(getVal('s-broker-deposit')) || 10000,
+      leverage:              parseInt(getVal('s-broker-leverage'), 10) || 500,
+    },
+    thresholds: {
+      min_trades:            parseInt(getVal('s-thr-trades'), 10) || 30,
+      min_profit_factor:     parseFloat(getVal('s-thr-pf')) || 1.2,
+      min_calmar:            parseFloat(getVal('s-thr-calmar')) || 0.5,
+      max_oos_degradation:   parseFloat(getVal('s-thr-oos')) || 0.3,
+      sensitivity_tolerance: parseFloat(getVal('s-thr-sens')) || 0.15,
+    },
+  };
+
+  try {
+    const resp = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      showSettingsMsg('Settings saved.', true);
+      addLog('Settings saved successfully.', 'success');
+      setTimeout(closeSettings, 1200);
+    } else {
+      showSettingsMsg('Error: ' + (data.error || 'Unknown error'), false);
+    }
+  } catch (e) {
+    showSettingsMsg('Save failed: ' + e.message, false);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Settings'; }
+  }
+}
+
+function showSettingsMsg(msg, ok) {
+  safe('settings-save-msg', e => {
+    e.textContent = msg;
+    e.className = 'settings-save-msg ' + (ok ? 'ok' : 'err');
+    e.style.opacity = '1';
+    setTimeout(() => { e.style.opacity = '0'; }, 3000);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   AI PANEL TOGGLE
+══════════════════════════════════════════════════════════════════════ */
+
+function toggleAIDetails() {
+  const details = el('ai-details');
+  if (!details) return;
+  const isOpen = details.classList.contains('open');
+  details.classList.toggle('open', !isOpen);
+  const label = isOpen ? 'View Details →' : '▲ Collapse';
+  safe('ai-expand-btn',  e => { e.textContent = label; });
+  safe('ai-view-details', e => { e.textContent = label; });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RUN DETAIL MODAL
+══════════════════════════════════════════════════════════════════════ */
+
+async function openRunDetail(run_id) {
+  if (!run_id) return;
+
+  // Show modal immediately with loading state
+  safe('run-detail-overlay', e => { e.style.display = 'flex'; });
+  safe('rd-run-id',       e => { e.textContent = run_id; });
+  safe('rd-meta',         e => { e.textContent = 'Loading…'; });
+  safe('rd-metrics',      e => { e.innerHTML = ''; });
+  safe('rd-params-tbody', e => { e.innerHTML = '<tr><td colspan="2" class="empty-state">Loading…</td></tr>'; });
+  safe('rd-ai-section',   e => { e.style.display = 'none'; });
+  safe('rd-footer',       e => { e.innerHTML = '<button class="verdict-btn ghost" onclick="closeRunDetail()">Close</button>'; });
+  // Clear any lingering evolution section from a previous openBestResult call
+  const existingEvo = document.getElementById('rd-evolution-section');
+  if (existingEvo) existingEvo.remove();
+
+  try {
+    const resp = await fetch('/api/run/' + encodeURIComponent(run_id));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const d = await resp.json();
+
+    // Header
+    safe('rd-run-id', e => { e.textContent = d.run_id || run_id; });
+    const phase = (d.phase || '—').replace(/_/g, ' ');
+    const ts    = d.ts ? new Date(d.ts).toLocaleString() : '—';
+    safe('rd-meta', e => { e.textContent = 'Phase: ' + phase + '  ·  ' + ts; });
+
+    // Metrics grid
+    const profit = parseFloat(d.net_profit     || 0);
+    const pf     = parseFloat(d.profit_factor  || 0);
+    const calmar = parseFloat(d.calmar         || 0);
+    const dd     = parseFloat(d.drawdown_pct   || d.max_drawdown || 0);
+    const wr     = parseFloat(d.win_rate       || 0);
+    const trades = parseInt(d.total_trades     || 0, 10);
+    const score  = parseFloat(d.score          || 0);
+
+    const metrics = [
+      { label: 'Net Profit',    val: fmtMoney(profit),          color: profit >= 0 ? 'var(--green)' : 'var(--red)' },
+      { label: 'Profit Factor', val: pf.toFixed(2),             color: pf >= 1.5 ? 'var(--green)' : pf >= 1 ? 'var(--yellow)' : 'var(--red)' },
+      { label: 'Calmar Ratio',  val: calmar.toFixed(2),         color: 'var(--teal)' },
+      { label: 'Max Drawdown',  val: dd.toFixed(1) + '%',       color: 'var(--red)' },
+      { label: 'Win Rate',      val: wr.toFixed(1) + '%',       color: 'var(--text)' },
+      { label: 'Total Trades',  val: trades.toLocaleString(),   color: 'var(--text)' },
+      { label: 'Score',         val: score.toFixed(4),          color: 'var(--accent2)' },
+      { label: 'Phase',         val: phase,                     color: 'var(--muted)' },
+    ];
+    safe('rd-metrics', e => {
+      e.innerHTML = metrics.map(m =>
+        `<div class="rd-metric">
+          <div class="rd-metric-label">${escapeHtml(m.label)}</div>
+          <div class="rd-metric-val" style="color:${m.color}">${escapeHtml(String(m.val))}</div>
+        </div>`
+      ).join('');
+    });
+
+    // Parameters
+    const params = d.params || {};
+    const paramEntries = Object.entries(params);
+    safe('rd-params-tbody', e => {
+      if (!paramEntries.length) {
+        e.innerHTML = '<tr><td colspan="2" class="empty-state">No parameters available</td></tr>';
+        return;
+      }
+      e.innerHTML = paramEntries.map(([key, val]) => {
+        const display = typeof val === 'number' ? val.toFixed(val % 1 !== 0 ? 4 : 0) : val;
+        return `<tr><td class="param-name">${escapeHtml(key)}</td><td class="param-val">${escapeHtml(String(display))}</td></tr>`;
+      }).join('');
+    });
+
+    // AI Reasoning
+    const ai = d.ai_insight;
+    if (ai) {
+      safe('rd-ai-section', e => { e.style.display = ''; });
+      safe('rd-ai-content', e => {
+        let html = '<div class="rd-ai-box">';
+        const analysisText = ai.analysis || ai.diagnosis || ai.headline || '';
+        if (analysisText) {
+          html += '<div class="rd-ai-analysis">' + escapeHtml(analysisText) + '</div>';
+        }
+        const changes = ai.changes || ai.suggestions || [];
+        if (changes.length) {
+          html += '<div class="ai-sub-title" style="margin-bottom:0.4rem;">Suggested Changes</div>';
+          html += '<div class="rd-ai-changes">';
+          changes.forEach(c => {
+            if (typeof c === 'object' && (c.param || c.parameter)) {
+              const p = c.param || c.parameter;
+              const v = c.value !== undefined ? c.value : (c.to !== undefined ? c.to : '?');
+              html += `<div class="rd-ai-change">
+                <span class="rd-ai-change-param">${escapeHtml(p)}</span>
+                <span class="rd-ai-change-arrow">→</span>
+                <span class="rd-ai-change-val">${escapeHtml(String(v))}</span>
+              </div>`;
+            } else if (typeof c === 'string') {
+              html += `<div class="rd-ai-change"><span style="color:var(--text)">${escapeHtml(c)}</span></div>`;
+            }
+          });
+          html += '</div>';
+        }
+        const conf = ai.confidence;
+        if (conf !== undefined) {
+          const confStr = typeof conf === 'number' ? (conf * 100).toFixed(0) + '%' : String(conf);
+          html += `<div style="margin-top:0.65rem;font-size:0.7rem;color:var(--muted)">Confidence: <strong style="color:var(--text)">${escapeHtml(confStr)}</strong></div>`;
+        }
+        const gs = ai.goal_status;
+        if (gs) {
+          const flags = [
+            gs.profit_factor_met ? '✓ PF' : '✗ PF',
+            gs.drawdown_ok       ? '✓ DD' : '✗ DD',
+            gs.calmar_met        ? '✓ Calmar' : '✗ Calmar',
+          ].join('  ·  ');
+          html += `<div style="margin-top:0.4rem;font-size:0.7rem;color:var(--muted)">Targets: ${escapeHtml(flags)}</div>`;
+        }
+        html += '</div>';
+        e.innerHTML = html;
+      });
+    }
+
+    // Footer
+    safe('rd-footer', e => {
+      let btns = '';
+      if (d.set_url) {
+        btns += `<a href="${escapeHtml(d.set_url)}" class="verdict-btn primary" download>⬇ Download .set</a>`;
+      }
+      const reportHref = '/reports/' + encodeURIComponent(d.run_id || run_id) + '/summary.html';
+      btns += `<a href="${reportHref}" class="verdict-btn secondary" target="_blank">📋 View Report</a>`;
+      btns += '<button class="verdict-btn ghost" onclick="closeRunDetail()">Close</button>';
+      e.innerHTML = btns;
+    });
+
+  } catch (err) {
+    safe('rd-meta', e => { e.textContent = 'Error: ' + err.message; });
+  }
+}
+
+function closeRunDetail() {
+  safe('run-detail-overlay', e => { e.style.display = 'none'; });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BEST RESULT — shows full params, AI reasoning, AND evolution path
+══════════════════════════════════════════════════════════════════════ */
+
+async function openBestResult() {
+  try {
+    const resp = await fetch('/api/best_result');
+    if (!resp.ok) {
+      // No best yet — open a toast-like state in the run detail modal
+      safe('run-detail-overlay', e => { e.style.display = 'flex'; });
+      safe('rd-run-id',       e => { e.textContent = 'Best Result'; });
+      safe('rd-meta',         e => { e.textContent = 'No best result yet — optimization must complete at least one passing run.'; });
+      safe('rd-metrics',      e => { e.innerHTML = ''; });
+      safe('rd-params-tbody', e => { e.innerHTML = '<tr><td colspan="2" class="empty-state">—</td></tr>'; });
+      safe('rd-ai-section',   e => { e.style.display = 'none'; });
+      safe('rd-footer',       e => { e.innerHTML = '<button class="verdict-btn ghost" onclick="closeRunDetail()">Close</button>'; });
+      return;
+    }
+    const d = await resp.json();
+    // Delegate to the existing openRunDetail, then append evolution path
+    await openRunDetail(d.run_id);
+    // Append evolution path as an extra section inside the modal body
+    const body = document.querySelector('.run-detail-body');
+    if (!body) return;
+    let evoSection = document.getElementById('rd-evolution-section');
+    if (!evoSection) {
+      evoSection = document.createElement('div');
+      evoSection.id = 'rd-evolution-section';
+      body.appendChild(evoSection);
+    }
+    const evo = d.evolution || [];
+    if (!evo.length) {
+      evoSection.innerHTML = '<div class="rd-section-title">Evolution Path</div><div style="font-size:0.76rem;color:var(--muted);padding:0.5rem 0;">No evolution data available for this run.</div>';
+      return;
+    }
+    const items = evo.map((r, i) => {
+      const tag = r.is_best ? '<span style="background:rgba(16,185,129,0.18);color:var(--green);padding:0.08rem 0.4rem;border-radius:4px;font-size:0.58rem;font-weight:700;margin-left:0.4rem">BEST</span>' : '';
+      const phaseLbl = (r.phase || '').replace(/_/g, ' ');
+      const pf = Number(r.profit_factor || 0).toFixed(2);
+      const calmar = Number(r.calmar || 0).toFixed(2);
+      const dd = Number(r.max_drawdown || 0).toFixed(1);
+      const score = Number(r.score || 0).toFixed(3);
+      const changeList = (r.changes || []).slice(0, 3).map(c => {
+        const p = c.param || c.parameter || '?';
+        const v = c.value !== undefined ? c.value : (c.to !== undefined ? c.to : '?');
+        return `${escapeHtml(p)}=${escapeHtml(String(v))}`;
+      }).join(', ');
+      const analysis = r.analysis ? `<div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;line-height:1.45">${escapeHtml(r.analysis).slice(0, 220)}${r.analysis.length > 220 ? '…' : ''}</div>` : '';
+      return `<div style="border-left:2px solid ${r.is_best ? 'var(--green)' : 'rgba(124,109,250,0.4)'};padding:0.5rem 0.65rem;margin-bottom:0.4rem;background:rgba(255,255,255,0.02);border-radius:0 6px 6px 0">
+        <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.72rem">
+          <span style="font-family:'JetBrains Mono',monospace;color:var(--muted)">#${i + 1}</span>
+          <span style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">${escapeHtml(r.run_id)}</span>
+          <span style="color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(phaseLbl)}</span>
+          ${tag}
+          <span style="margin-left:auto;font-size:0.65rem;font-family:'JetBrains Mono',monospace;color:var(--muted)">score ${score}</span>
+        </div>
+        <div style="display:flex;gap:0.6rem;font-size:0.65rem;color:var(--muted);margin-top:0.2rem;font-family:'JetBrains Mono',monospace">
+          <span>PF ${pf}</span><span>Calmar ${calmar}</span><span>DD ${dd}%</span>
+        </div>
+        ${changeList ? `<div style="font-size:0.66rem;color:var(--teal);font-family:'JetBrains Mono',monospace;margin-top:0.25rem">Δ ${escapeHtml(changeList)}</div>` : ''}
+        ${analysis}
+      </div>`;
+    }).join('');
+    evoSection.innerHTML = `
+      <div class="rd-section-title">Evolution Path <span style="font-weight:500;color:var(--muted);letter-spacing:0.02em;text-transform:none;font-size:0.65rem">— ${evo.length} steps to this best result</span></div>
+      <div style="max-height:260px;overflow-y:auto;padding:0.25rem 0;">${items}</div>
+    `;
+  } catch (err) {
+    addLog('Failed to open best result: ' + err.message, 'error');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════════════ */
+
+(function init() {
+  initSparklines();
+  restoreHistory();
+  startPolling();
+  addLog('APEX Dashboard initialized.', 'success');
+})();

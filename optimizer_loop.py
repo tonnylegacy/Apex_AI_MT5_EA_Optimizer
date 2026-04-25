@@ -30,6 +30,8 @@ from scoring.composite import CompositeScorer
 from mutation.engine import MutationEngine
 from validation.gate import ValidationGate
 from reports.writer import ReportWriter
+from analysis.ai_reasoner import AIReasoner
+from analysis.ai_reasoner_config import load_api_key
 
 import pandas as pd
 
@@ -69,6 +71,11 @@ class OptimizerLoop:
         self.score_history: list[dict]     = []
         self.run_start_ts: Optional[float] = None
         self.session_tested_deltas: list[dict] = []  # dedup within this session only
+
+        # AI Reasoning Layer
+        api_key = load_api_key(config_path)
+        self.ai_reasoner = AIReasoner(api_key=api_key)
+        self._run_history: list[dict] = []  # accumulates across iterations for AI context
 
         with open(config_path) as f:
             self.cfg = yaml.safe_load(f)
@@ -143,6 +150,26 @@ class OptimizerLoop:
         # Write baseline report
         findings = self._run_analysis(baseline_id, baseline_trades, baseline_metrics,
                                       analyzers, store)
+
+        # AI Reasoning — baseline
+        self._emit("log", {"level": "info", "msg": "🤖 AI Reasoner analyzing baseline..."})
+        ai_insight = self.ai_reasoner.analyze(
+            findings=findings,
+            metrics=baseline_metrics,
+            run_history=self._run_history,
+            current_params=default_params,
+        )
+        self._run_history.append({
+            "run_id": baseline_id,
+            "score":  round(baseline_metrics.composite_score, 4),
+            "calmar": round(baseline_metrics.calmar_ratio, 4),
+            "pf":     round(baseline_metrics.profit_factor, 4),
+            "phase":  "baseline",
+            "params": default_params,
+        })
+        self._emit("ai_insight", ai_insight.to_dict())
+        self._emit("log", {"level": "info", "msg": f"🤖 AI: {ai_insight.headline}"})
+
         writer.write(baseline_id, baseline_metrics, baseline_trades, findings, default_params)
 
         self.best_score    = baseline_metrics.composite_score
@@ -183,6 +210,17 @@ class OptimizerLoop:
             if not findings:
                 self._emit("log", {"level": "warn", "msg": "No actionable findings. Stopping."})
                 break
+
+            # AI Reasoning — per iteration
+            self._emit("log", {"level": "info", "msg": f"🤖 AI Reasoner analyzing iteration {self.iteration}..."})
+            ai_insight = self.ai_reasoner.analyze(
+                findings=findings,
+                metrics=current_metrics,
+                run_history=self._run_history,
+                current_params=current_params,
+            )
+            self._emit("ai_insight", ai_insight.to_dict())
+            self._emit("log", {"level": "info", "msg": f"🤖 AI: {ai_insight.headline}"})
 
             # Mutation proposals — only dedup within this session
             hypotheses = mutator.propose(
@@ -344,6 +382,16 @@ class OptimizerLoop:
                 no_improve_count = 0
             else:
                 no_improve_count += 1
+
+            # Track run history for AI context
+            self._run_history.append({
+                "run_id": iteration_best.run_id,
+                "score":  round(iteration_best.composite_score, 4),
+                "calmar": round(iteration_best.calmar_ratio, 4),
+                "pf":     round(iteration_best.profit_factor, 4),
+                "phase":  "explore",
+                "params": iteration_best_params,
+            })
 
             # Update score chart
             self.score_history.append({
