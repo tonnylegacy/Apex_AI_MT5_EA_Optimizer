@@ -73,11 +73,13 @@ class AIReasoner:
     Falls back gracefully if API key is missing or call fails.
     """
 
-    MODEL   = "claude-sonnet-4-6"
+    MODEL   = "claude-opus-4-7"   # default — overridden by config.ai.model when present
     API_URL = "https://api.anthropic.com/v1/messages"
     TIMEOUT = 30  # seconds
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        if model:
+            self.MODEL = model
         # If the caller passes a placeholder like "${ANTHROPIC_API_KEY}" or an
         # empty string, treat it as missing and fall back to the env var.
         candidate = (api_key or "").strip()

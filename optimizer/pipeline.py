@@ -240,9 +240,14 @@ class OptimizationPipeline:
         ranker   = ResultRanker(weights=cfg.scoring_weights)
         budget   = BudgetManager(cfg.budget_minutes)
 
-        # Initialize AI reasoning layer
+        # Initialize AI reasoning layer (model + timeout from config)
         api_key = load_api_key(self.config_path)
-        self._ai_reasoner = AIReasoner(api_key=api_key)
+        ai_cfg = (self.cfg.get("ai") or {})
+        model = ai_cfg.get("model") or "claude-opus-4-7"
+        self._ai_reasoner = AIReasoner(api_key=api_key, model=model)
+        if "timeout_seconds" in ai_cfg:
+            try: self._ai_reasoner.TIMEOUT = int(ai_cfg["timeout_seconds"])
+            except Exception: pass
         # Stream Claude's reasoning tokens to the dashboard as they arrive.
         # The Live AI Thinking Feed listens for `ai_thinking_chunk` events.
         try:

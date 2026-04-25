@@ -1,6 +1,10 @@
 # APEX — AI‑Powered MT5 EA Optimizer
 
+[![Built with Claude Opus 4.7](https://img.shields.io/badge/Built%20with-Claude%20Opus%204.7-7c3aed?style=flat-square)](https://www.anthropic.com/news/claude-opus-4-7) [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=flat-square)](LICENSE) [![Demo Mode](https://img.shields.io/badge/Demo-No%20MT5%20required-00d4aa?style=flat-square)](demo/run_demo.py)
+
 > **An AI trader thinking out loud while it tests, fails, and improves a strategy.**
+
+> Built with **[Claude Opus 4.7](https://www.anthropic.com/news/claude-opus-4-7)** for the [Cerebral Valley × Anthropic — Built with Opus 4.7 hackathon](https://cerebralvalley.ai/e/built-with-4-7-hackathon).
 
 APEX is an autonomous optimizer for MetaTrader 5 Expert Advisors. Instead of brute‑forcing
 parameters with grid search, an LLM reads each backtest result, decides which parameter to
