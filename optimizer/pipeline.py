@@ -312,6 +312,10 @@ class OptimizationPipeline:
                 "budget_summary": budget.summary(),
             })
 
+            # Narrate every Phase 1 outcome so the AI Thinking feed stays alive
+            # even though no API call is made — this is observation, not AI reasoning
+            self._narrate_phase1_run(i + 1, cfg.phase1_samples, result)
+
             if budget.is_exhausted():
                 self._log("warning", "⏱ Time budget reached during Phase 1")
                 break
@@ -1125,6 +1129,66 @@ class OptimizationPipeline:
         if len(self._thinking_log) > 200:
             self._thinking_log = self._thinking_log[-200:]
         self._emit("ai_thinking", payload)
+
+    def _narrate_phase1_run(self, idx: int, total: int, result: RankedResult) -> None:
+        """
+        Emit a short observation per Phase 1 run so the AI Thinking feed
+        stays alive during the LHS exploration phase. No API call — pure
+        rule-based narration of what just happened.
+
+        Cadence:
+          * Every passing result → success message
+          * Every clearly bad result → warning
+          * Once every 5 mediocre runs → progress beat
+        """
+        try:
+            pf  = float(getattr(result, "profit_factor", 0) or 0)
+            dd  = float(getattr(result, "max_drawdown", 0) or 0)  # fraction
+            tr  = int(getattr(result, "total_trades", 0) or 0)
+            np_ = float(getattr(result, "net_profit", 0) or 0)
+            passing = bool(getattr(result, "passing", False))
+
+            tag = f"Run {idx}/{total}"
+
+            if tr == 0 or tr < 10:
+                msg = (
+                    f"{tag}: only {tr} trades — params likely too restrictive "
+                    f"(session window, signal threshold, or risk filter blocking entries)."
+                )
+                kind = "info"
+            elif passing and pf >= 1.5 and dd * 100 <= 15:
+                msg = (
+                    f"{tag}: PF {pf:.2f}, DD {dd*100:.1f}%, {tr} trades — "
+                    f"strong region, worth refining."
+                )
+                kind = "success"
+            elif passing:
+                msg = (
+                    f"{tag}: PF {pf:.2f}, DD {dd*100:.1f}% — passes gates but "
+                    f"not a standout. Logged."
+                )
+                kind = "info"
+            elif np_ < 0:
+                msg = (
+                    f"{tag}: ${np_:.0f} loss with {tr} trades. Skipping this region."
+                )
+                kind = "warning"
+            elif dd * 100 > 25:
+                msg = (
+                    f"{tag}: drawdown {dd*100:.1f}% too high — EA over-leveraged "
+                    f"in this parameter region."
+                )
+                kind = "warning"
+            else:
+                # Mediocre — only emit one in five so we don't spam
+                if idx % 5 != 0:
+                    return
+                msg = f"{tag}: PF {pf:.2f}, DD {dd*100:.1f}% — mediocre, moving on."
+                kind = "info"
+
+            self._emit_thinking(msg, kind=kind)
+        except Exception as e:
+            logger.debug(f"_narrate_phase1_run failed: {e}")
 
     def _emit_early_termination(self, reason_code: str, message: str, details: dict = None) -> None:
         """

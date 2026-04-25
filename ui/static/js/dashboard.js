@@ -62,6 +62,9 @@ const state = {
   elapsedTimer: null,
   logCount: 0,
   bestProfit: null,
+  phase: 'idle',          // current pipeline phase, lowercase
+  autonomous: false,      // whether the current run uses the AI loop
+  aiKeySet: false,        // whether ANTHROPIC_API_KEY is present
   sparkData: { profit: [], dd: [], pf: [], trades: [], runs: [] },
 };
 
@@ -547,8 +550,34 @@ function setRunningState(isRunning, label) {
   if (isRunning) {
     if (label) safe('run-indicator-label', e => { e.textContent = label; });
     startElapsedTimer();
+    refreshAIWaitingState();
   } else {
     stopElapsedTimer();
+  }
+}
+
+/**
+ * Update the AI Summary panel's waiting message + action link based on
+ * whether (a) a run is active and (b) the API key is configured.
+ * Called whenever phase/state/aiKeySet changes.
+ */
+function refreshAIWaitingState() {
+  const waiting = el('ai-waiting');
+  const txt     = el('ai-waiting-text');
+  const action  = el('ai-waiting-action');
+  if (!waiting || !txt) return;
+  // Don't override if AI content has already loaded
+  const content = el('ai-content');
+  if (content && content.style.display !== 'none') return;
+  if (state.isRunning && !state.aiKeySet) {
+    txt.textContent = 'AI insights are off — no Anthropic API key set.';
+    if (action) action.style.display = '';
+  } else if (state.isRunning && state.aiKeySet) {
+    txt.textContent = 'Optimization running — first AI analysis fires after the next backtest.';
+    if (action) action.style.display = 'none';
+  } else {
+    txt.textContent = 'Waiting for optimization to start...';
+    if (action) action.style.display = 'none';
   }
 }
 
@@ -837,7 +866,11 @@ socket.on('run_complete', (d) => {
 
 socket.on('phase_start', (d) => {
   const phaseNum = phaseMap[d.phase] || parseInt(d.phase_num || d.phase || '1', 10);
+  state.phase = (d.phase || '').toLowerCase();
+  if (d.mode === 'autonomous') state.autonomous = true;
   setPhaseActive(phaseNum, { total: d.total, mode: d.mode });
+  // Re-render empty-state cards so they pick up the phase-aware message
+  renderParamChanges();
   const label = d.label
     || ({ 1: 'Exploration', 2: (d.mode === 'autonomous' ? 'AI Iteration' : 'Iteration'), 3: 'Validation' }[phaseNum])
     || ('Phase ' + phaseNum);
@@ -1074,7 +1107,25 @@ function renderParamChanges() {
   const box = el('param-changes-list');
   if (!box) return;
   if (!paramChangesState.iterations.length) {
-    box.innerHTML = '<div class="live-intel-empty">No iterations yet.<br><span style="font-size:0.68rem">AI-driven parameter edits appear per iteration.</span></div>';
+    // Tailor the empty-state message to the current phase + mode
+    const phase = (state.phase || '').toLowerCase();
+    let msg, sub;
+    if (phase === 'phase1') {
+      msg = 'Exploration phase';
+      sub = 'Parameter changes appear once Phase 2 (AI iteration) starts.';
+    } else if (phase.startsWith('phase2')) {
+      msg = state.autonomous ? 'Waiting for first AI iteration…' : 'Random-neighbor refinement';
+      sub = state.autonomous
+        ? 'Claude will choose the next parameter set after the first run finishes.'
+        : 'Enable Autonomous AI mode in setup to see AI-driven parameter changes.';
+    } else if (phase.startsWith('phase3')) {
+      msg = 'Validation phase';
+      sub = 'Phase 2 complete. See validation panel for OOS + sensitivity results.';
+    } else {
+      msg = 'No iterations yet';
+      sub = 'AI-driven parameter edits appear per iteration during Phase 2.';
+    }
+    box.innerHTML = `<div class="live-intel-empty">${escapeHtml(msg)}<br><span style="font-size:0.68rem">${escapeHtml(sub)}</span></div>`;
     return;
   }
   // Newest first
@@ -1381,11 +1432,19 @@ safe('btn-stop', stopBtn => {
 
 async function restoreHistory() {
   try {
-    const [histResp, aiResp, liveResp] = await Promise.all([
+    const [histResp, aiResp, liveResp, settingsResp] = await Promise.all([
       fetch('/api/history'),
       fetch('/api/ai_insight/latest'),
       fetch('/api/live_activity'),
+      fetch('/api/settings'),
     ]);
+
+    // Note whether the API key is set so the AI panel can show a useful empty state
+    try {
+      const s = await settingsResp.json();
+      state.aiKeySet = !!(s && s.ai && s.ai.anthropic_api_key_set);
+    } catch (_) {}
+    refreshAIWaitingState();
 
     const runs = await histResp.json();
     if (Array.isArray(runs) && runs.length) {

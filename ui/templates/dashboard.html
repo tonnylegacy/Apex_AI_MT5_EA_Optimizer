@@ -1969,10 +1969,14 @@
             <a href="#" class="view-details-link" id="ai-view-details" onclick="toggleAIDetails(); return false;">View Details →</a>
           </div>
 
-          <!-- Waiting state -->
+          <!-- Waiting / no-key state -->
           <div class="ai-waiting" id="ai-waiting">
             <div class="ai-pulse-dot"></div>
-            <span>Waiting for optimization to start...</span>
+            <span id="ai-waiting-text">Waiting for optimization to start...</span>
+            <a href="#" id="ai-waiting-action" onclick="openSettings(); return false;"
+               style="display:none;font-size:0.72rem;color:var(--accent2);text-decoration:underline;cursor:pointer;">
+              Configure API key in Settings →
+            </a>
           </div>
 
           <!-- Active state -->
