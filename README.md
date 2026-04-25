@@ -77,7 +77,7 @@ to the UI flows through [`optimizer/pipeline.py`](optimizer/pipeline.py) via Soc
 ### 1. Clone + install
 
 ```bash
-git clone https://github.com/<your-user>/MT5_Optimizer.git
+git clone https://github.com/tonnylegacy/MT5_Optimizer.git
 cd MT5_Optimizer
 python -m venv .venv
 .venv\Scripts\activate            # Windows
