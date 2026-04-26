@@ -72,7 +72,7 @@ Claude Opus 4.7 (the reasoning loop), Flask + Flask‑SocketIO (real‑time UI),
 
 ## GitHub URL
 
-https://github.com/tonnylegacy/MT5_Optimizer
+https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer
 
 ---
 
@@ -89,7 +89,8 @@ No hosted demo (the app runs locally to drive a local MT5 install). For judges:
 
 ## Video / GIF
 
-`screenshots/apex_demo.gif` (438 KB, GitHub‑embedded in README hero)
+- **YouTube (3-minute submission video):** https://youtu.be/XM3tQig0oWI
+- **GIF (animated hero in README):** `screenshots/apex_demo.gif`
 
 ---
 
@@ -119,7 +120,7 @@ MIT
 
 ## Submission checklist
 
-- [x] Repo public on GitHub: <https://github.com/tonnylegacy/MT5_Optimizer>
+- [x] Repo public on GitHub: <https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer>
 - [x] LICENSE file (MIT)
 - [x] README with pitch + screenshots + install + architecture diagram
 - [x] No leaked API keys (config.yaml git‑ignored, env‑var fallback wired, GET /api/settings masks key)
@@ -128,5 +129,6 @@ MIT
 - [x] Demo mode that runs without MT5 (`python -m demo.run_demo`)
 - [x] Opus 4.7 is the default model (config + AIReasoner class default)
 - [x] Streaming reasoning visible to the user (SSE → `ai_thinking_chunk`)
-- [ ] Recorded a 30–60 second screen capture for any "video" field — *do this last; the GIF can substitute*
-- [ ] Submission form filled — *paste blocks above into the Cerebral Valley form when it opens*
+- [x] Recorded a 3-minute submission video (founder story → live demo → outro)
+- [ ] Video uploaded to YouTube (unlisted) — paste link in the form
+- [ ] Submission form filled — *paste blocks above into the Cerebral Valley form*

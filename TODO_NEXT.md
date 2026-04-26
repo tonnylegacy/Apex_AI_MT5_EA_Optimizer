@@ -15,7 +15,7 @@ that any MT5 user can run.
 ### Prompt for next session
 
 > Draft a PyInstaller spec + first-run wizard for the APEX MT5 Optimizer
-> (https://github.com/tonnylegacy/MT5_Optimizer). Goal: turn the project
+> (https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer). Goal: turn the project
 > into a double-click .exe for forex traders.
 >
 > **(1)** Create `apex.spec` that bundles `app.py`, all submodules,

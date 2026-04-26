@@ -43,7 +43,7 @@ The act of making that personal copy is called **cloning**. We'll do this in Par
 
 A "repo" is just a folder, but a very organised folder. APEX's repo lives at:
 
-> **https://github.com/tonnylegacy/MT5_Optimizer**
+> **https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer**
 
 If you visit that link in any web browser, you'll see:
 
@@ -126,7 +126,7 @@ If you want real backtests:
 
 If terminals scare you, this is fine.
 
-1. Visit <https://github.com/tonnylegacy/MT5_Optimizer> in your browser.
+1. Visit <https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer> in your browser.
 2. Click the green **<> Code** button (top right of the file list).
 3. Click **Download ZIP** at the bottom of the dropdown.
 4. Save the ZIP file somewhere you'll remember — like your Desktop or Documents folder.
@@ -151,7 +151,7 @@ That's it. You have APEX. The downside: when the project updates next week, you 
 3. Run the clone command. **Copy this exactly:**
 
    ```
-   git clone https://github.com/tonnylegacy/MT5_Optimizer.git
+   git clone https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer.git
    ```
 
 4. Press Enter. You'll see a few lines of progress. After 10–30 seconds it'll finish.
@@ -353,4 +353,4 @@ Welcome to open source. The whole world's code is now yours to read.
 
 ---
 
-*Last updated 2026-04-25 · APEX version: see git log · Questions? Open an issue at <https://github.com/tonnylegacy/MT5_Optimizer/issues>*
+*Last updated 2026-04-25 · APEX version: see git log · Questions? Open an issue at <https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer/issues>*

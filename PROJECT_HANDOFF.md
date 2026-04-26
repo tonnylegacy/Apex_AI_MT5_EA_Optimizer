@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-04-13  
 **Status:** ✅ Phase 1 (Backend Engine) + ✅ Phase 2 (Live Web Dashboard) — BOTH COMPLETE  
-**GitHub:** https://github.com/tonnylegacy/MT5_Optimizer  
+**GitHub:** https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer  
 **Primary EA:** LEGSTECH_EA_V2 | Symbol: XAUUSD | Timeframe: H1 | Broker TZ: UTC+2
 
 ---
@@ -218,7 +218,7 @@ broker:
 | ui/static/js/dashboard.js | ✅ | SocketIO + Chart.js + live updates |
 | reports/writer.py | ✅ | HTML + CSV + JSON per run |
 | Launch Optimizer.bat | ✅ | Double-click launcher |
-| GitHub | ✅ | https://github.com/tonnylegacy/MT5_Optimizer |
+| GitHub | ✅ | https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer |
 
 ---
 
@@ -290,7 +290,7 @@ git push
 | Item | Value |
 |---|---|
 | Python | 3.11 — `C:\Users\DELL\AppData\Local\Programs\Python\Python311\python.exe` |
-| GitHub | https://github.com/tonnylegacy/MT5_Optimizer |
+| GitHub | https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer |
 | MT5 Terminal ID | `D0E8209F77C8CF37AD8BF550E51FF075` |
 | MT5 Broker | HFMarketsGlobal-Live3 (Build 5660) |
 | Tester Agent | `Agent-127.0.0.1-3000` |
@@ -401,5 +401,5 @@ First successful parser test on real MT5 report (2026-04-13):
 ---
 
 *Last updated by Antigravity AI — 2026-04-13*  
-*GitHub: https://github.com/tonnylegacy/MT5_Optimizer*  
+*GitHub: https://github.com/tonnylegacy/Apex_AI_MT5_EA_Optimizer*  
 *Both Phase 1 and Phase 2 are complete. Continue from Phase 3 (packaging).*
