@@ -21,7 +21,7 @@ Calmar targets you set. Every reasoning step streams live to a dashboard.
 | Black box — see only final winner | Live **thinking feed** + per‑iteration param diffs |
 | No notion of *why* a config works | Stores AI analysis next to every run |
 | Stops after N iterations | Stops when **quality targets are met** (early exit) |
-| One‑shot validation | Out‑of‑sample **+ sensitivity** with live progress |
+| One‑shot validation | Out‑of‑sample **+ ±20% sensitivity + 10,000‑run vectorized Monte Carlo & Quarter‑Kelly** |
 
 ---
 
